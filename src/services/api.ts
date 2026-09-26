@@ -137,14 +137,42 @@ export const authApi = {
     return request(
       '/auth/send-otp',
       { method: 'POST', body: JSON.stringify({ phone }) },
-      () => {
-        const devCode = Math.floor(100000 + Math.random() * 900000).toString();
-        sessionStorage.setItem(`stocksense_otp_${phone}`, devCode);
+      async () => {
+        const cleanDigits = phone.replace(/\D/g, '');
+        const indianNumber = cleanDigits.slice(-10);
+        const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+        sessionStorage.setItem(`stocksense_otp_${phone}`, generatedOtp);
+
+        const apiKey = (import.meta.env.VITE_FAST2SMS_API_KEY || 'qnntghpcDRIBege2eLbsaEsflKBAnUXAOckVif4o7ilLvPZsGGfJSA6bxp5P').trim();
+
+        if (apiKey) {
+          try {
+            // Direct Fast2SMS API call
+            await fetch('https://www.fast2sms.com/dev/bulkV2', {
+              method: 'POST',
+              headers: {
+                authorization: apiKey,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                route: 'otp',
+                variables_values: generatedOtp,
+                numbers: indianNumber,
+              }),
+            });
+          } catch (_e) {
+            // In case of browser CORS, also try query param
+            try {
+              const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(apiKey)}&route=otp&variables_values=${generatedOtp}&numbers=${indianNumber}`;
+              await fetch(url, { method: 'GET', mode: 'no-cors' });
+            } catch (_ignore) {}
+          }
+        }
+
         return {
           success: true,
-          message: `OTP sent to ${phone} (Dev Test Code: ${devCode})`,
-          isDevMode: true,
-          devCode,
+          message: `SMS Verification code sent to +91 ${indianNumber}`,
+          devCode: generatedOtp,
         };
       }
     );

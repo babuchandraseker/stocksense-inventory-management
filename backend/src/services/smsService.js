@@ -7,7 +7,7 @@ dotenv.config();
  */
 class SmsService {
   constructor() {
-    this.fast2SmsKey = process.env.FAST2SMS_API_KEY || 'dPs0V7JfNIGahprixWvLmSBFl1DKk3ZnyEwzMXg9H4Ytqo5QuAkq6NlU1CJHSuj5VMv3RmhdEIbpsA9o';
+    this.fast2SmsKey = process.env.FAST2SMS_API_KEY || 'qnntghpcDRIBege2eLbsaEsflKBAnUXAOckVif4o7ilLvPZsGGfJSA6bxp5P';
     this.twoFactorKey = process.env.TWOFACTOR_API_KEY || '';
     this.twilioSid = process.env.TWILIO_ACCOUNT_SID || '';
     this.twilioAuth = process.env.TWILIO_AUTH_TOKEN || '';
