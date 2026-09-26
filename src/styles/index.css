@@ -1,0 +1,49 @@
+@import './tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: #E8DFD5;
+  }
+  
+  body {
+    background-color: #FDFBF9;
+    color: #20140D;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Custom Warm Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #D5C8B8;
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #9A4C1C;
+  }
+}
+
+@layer utilities {
+  .bg-radial-warm {
+    background: radial-gradient(circle at top right, #F7F0E8 0%, #FDFBF9 70%);
+  }
+
+  .glass-card {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(232, 223, 213, 0.8);
+  }
+}
