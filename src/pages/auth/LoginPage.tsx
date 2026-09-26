@@ -272,12 +272,12 @@ export const LoginPage: React.FC = () => {
         
         {/* LEFT SHOWCASE PANEL (Warehouse Imagery + Brand Philosophy) */}
         <div className="hidden lg:flex lg:col-span-5 relative bg-[#26190F] text-[#F8F5F2] flex-col justify-between p-10 overflow-hidden">
-          {/* Background image overlay with rich brown tint */}
+          {/* Background image: young warehouse manager checking inventory tablet */}
           <div 
-            className="absolute inset-0 bg-cover bg-center opacity-30 mix-blend-luminosity scale-105 transition-transform duration-1000 hover:scale-100"
-            style={{ backgroundImage: `url('/assets/warehouse_hero.jpg')` }}
+            className="absolute inset-0 bg-cover bg-center opacity-45 mix-blend-luminosity scale-100 transition-transform duration-700 hover:scale-105"
+            style={{ backgroundImage: `url('/assets/warehouse_manager_hero.jpg')` }}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#26190F] via-[#26190F]/70 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#26190F] via-[#26190F]/65 to-[#26190F]/45" />
 
           {/* Top Logo */}
           <div className="relative z-10 flex items-center gap-3">

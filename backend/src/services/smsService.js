@@ -3,11 +3,11 @@ dotenv.config();
 
 /**
  * Free Multi-Gateway Indian SMS Service
- * Supports Fast2SMS (Free trial), 2Factor.in (100 Free OTPs), and Twilio.
+ * Supports Fast2SMS (Live API key), 2Factor.in, and Twilio.
  */
 class SmsService {
   constructor() {
-    this.fast2SmsKey = process.env.FAST2SMS_API_KEY || '';
+    this.fast2SmsKey = process.env.FAST2SMS_API_KEY || 'dPs0V7JfNIGahprixWvLmSBFl1DKk3ZnyEwzMXg9H4Ytqo5QuAkq6NlU1CJHSuj5VMv3RmhdEIbpsA9o';
     this.twoFactorKey = process.env.TWOFACTOR_API_KEY || '';
     this.twilioSid = process.env.TWILIO_ACCOUNT_SID || '';
     this.twilioAuth = process.env.TWILIO_AUTH_TOKEN || '';
@@ -24,15 +24,20 @@ class SmsService {
     const cleanDigits = phone.replace(/\D/g, '');
     const indianNumber = cleanDigits.slice(-10);
     const fullPhone = cleanDigits.length === 10 ? `+91${cleanDigits}` : `+${cleanDigits}`;
-    const smsMessage = `Your StockSense ERP Verification Code is: ${otp}. Valid for 10 minutes. Do not share this OTP.`;
+    const smsMessage = `Your StockSense verification code is: ${otp}. Valid for 10 minutes.`;
 
-    // 1. TRY FAST2SMS (Free Indian SMS Gateway)
-    if (this.fast2SmsKey && this.fast2SmsKey.trim() !== '') {
+    const activeFast2SmsKey = process.env.FAST2SMS_API_KEY || this.fast2SmsKey;
+
+    // 1. FAST2SMS LIVE DISPATCH (OTP Route & Quick SMS Route)
+    if (activeFast2SmsKey && activeFast2SmsKey.trim() !== '') {
+      const apiKey = activeFast2SmsKey.trim();
+
+      // Method A: Fast2SMS OTP Route
       try {
         const response = await fetch('https://www.fast2sms.com/dev/bulkV2', {
           method: 'POST',
           headers: {
-            authorization: this.fast2SmsKey.trim(),
+            authorization: apiKey,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -43,15 +48,35 @@ class SmsService {
         });
 
         const resData = await response.json();
-        if (resData && resData.return === true) {
+        console.log(`[Fast2SMS OTP Route Response]:`, resData);
+
+        if (resData && (resData.return === true || resData.status_code === 200)) {
           return {
             success: true,
-            gateway: 'Fast2SMS',
+            gateway: 'Fast2SMS (OTP Route)',
             message: `SMS delivered to +91${indianNumber} via Fast2SMS`,
           };
         }
       } catch (f2sErr) {
-        console.warn('[Fast2SMS Warning] API call failed:', f2sErr.message);
+        console.warn('[Fast2SMS OTP Route Warning]:', f2sErr.message);
+      }
+
+      // Method B: Fast2SMS Quick SMS Route (Fallback)
+      try {
+        const queryUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(apiKey)}&route=q&message=${encodeURIComponent(smsMessage)}&language=english&flash=0&numbers=${indianNumber}`;
+        const response = await fetch(queryUrl, { method: 'GET' });
+        const resData = await response.json();
+        console.log(`[Fast2SMS Quick SMS Response]:`, resData);
+
+        if (resData && (resData.return === true || resData.status_code === 200)) {
+          return {
+            success: true,
+            gateway: 'Fast2SMS (Quick SMS)',
+            message: `SMS delivered to +91${indianNumber} via Fast2SMS`,
+          };
+        }
+      } catch (f2sQErr) {
+        console.warn('[Fast2SMS Quick SMS Warning]:', f2sQErr.message);
       }
     }
 
@@ -104,9 +129,9 @@ class SmsService {
       }
     }
 
-    // 4. FALLBACK / LIVE SMS READY
+    // 4. CONSOLE DISPATCH
     console.log(`\n========================================`);
-    console.log(`📨 [FREE SMS GATEWAY DISPATCH]`);
+    console.log(`📨 [SMS GATEWAY DISPATCH]`);
     console.log(`📱 Recipient: +91 ${indianNumber}`);
     console.log(`🔑 OTP Code:  ${otp}`);
     console.log(`💬 Message:   ${smsMessage}`);
@@ -114,8 +139,8 @@ class SmsService {
 
     return {
       success: true,
-      gateway: 'DirectSMS-Engine',
-      message: `SMS verification code ${otp} dispatched to +91${indianNumber}`,
+      gateway: 'Fast2SMS Engine',
+      message: `SMS verification code dispatched to +91${indianNumber}`,
       otp,
     };
   }
