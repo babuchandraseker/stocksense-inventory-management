@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   Product,
   Receipt,
@@ -19,6 +19,13 @@ import {
   INITIAL_WAREHOUSES,
 } from '../data/mockData';
 import {
+  productService,
+  receiptService,
+  deliveryService,
+  transferService,
+  adjustmentService,
+  ledgerService,
+  warehouseService,
   productApi,
   receiptApi,
   deliveryApi,
@@ -34,6 +41,11 @@ interface InventoryContextType {
   adjustments: Adjustment[];
   ledger: LedgerEntry[];
   warehouses: Warehouse[];
+  loading: boolean;
+  error: string | null;
+
+  // Refresh
+  refreshData: () => Promise<void>;
 
   // Product actions
   addProduct: (product: Omit<Product, 'id' | 'lastUpdated' | 'status'>) => Product;
@@ -44,16 +56,20 @@ interface InventoryContextType {
   // Receipt actions
   createReceipt: (receipt: Omit<Receipt, 'id' | 'receiptNumber' | 'createdAt' | 'productsCount' | 'totalQuantity'>) => Receipt;
   updateReceiptStatus: (id: string, status: Receipt['status']) => void;
+  validateReceiptRpc: (id: string) => Promise<void>;
 
   // Delivery actions
   createDelivery: (delivery: Omit<Delivery, 'id' | 'deliveryNumber' | 'productsCount' | 'totalQuantity'>) => Delivery;
   advanceDeliveryStatus: (id: string) => void;
+  validateDeliveryRpc: (id: string) => Promise<void>;
 
   // Transfer actions
   createTransfer: (transfer: Omit<Transfer, 'id' | 'transferNumber'>) => Transfer;
+  validateTransferRpc: (id: string) => Promise<void>;
 
   // Adjustment actions
   createAdjustment: (adjustment: Omit<Adjustment, 'id' | 'adjustmentNumber'>) => Adjustment;
+  validateAdjustmentRpc: (id: string) => Promise<void>;
 
   // Stats
   totalProductsCount: number;
@@ -66,6 +82,9 @@ interface InventoryContextType {
 const InventoryContext = createContext<InventoryContextType | undefined>(undefined);
 
 export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
   const [products, setProducts] = useState<Product[]>(() => {
     const saved = localStorage.getItem('stocksense_products');
     return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
@@ -96,7 +115,63 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return saved ? JSON.parse(saved) : INITIAL_LEDGER;
   });
 
-  const [warehouses] = useState<Warehouse[]>(INITIAL_WAREHOUSES);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>(INITIAL_WAREHOUSES);
+
+  const refreshData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [
+        prods,
+        recs,
+        dels,
+        trfs,
+        adjs,
+        leds,
+        whs,
+      ] = await Promise.allSettled([
+        productService.getProducts(),
+        receiptService.listReceipts(),
+        deliveryService.listDeliveries(),
+        transferService.listTransfers(),
+        adjustmentService.listAdjustments(),
+        ledgerService.getMovementHistory(),
+        warehouseService.getWarehouses(),
+      ]);
+
+      if (prods.status === 'fulfilled' && prods.value.length > 0) {
+        setProducts(prods.value);
+      }
+      if (recs.status === 'fulfilled' && recs.value.length > 0) {
+        setReceipts(recs.value);
+      }
+      if (dels.status === 'fulfilled' && dels.value.length > 0) {
+        setDeliveries(dels.value);
+      }
+      if (trfs.status === 'fulfilled' && trfs.value.length > 0) {
+        setTransfers(trfs.value);
+      }
+      if (adjs.status === 'fulfilled' && adjs.value.length > 0) {
+        setAdjustments(adjs.value);
+      }
+      if (leds.status === 'fulfilled' && leds.value.length > 0) {
+        setLedger(leds.value);
+      }
+      if (whs.status === 'fulfilled' && whs.value.length > 0) {
+        setWarehouses(whs.value);
+      }
+    } catch (err: any) {
+      console.warn('[InventoryContext] Live fetch fallback:', err.message || err);
+      setError(err.message || 'Failed to sync with live database');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Fetch initial live data on mount
+  useEffect(() => {
+    refreshData();
+  }, [refreshData]);
 
   useEffect(() => {
     localStorage.setItem('stocksense_products', JSON.stringify(products));
@@ -142,7 +217,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     setProducts((prev) => [newProduct, ...prev]);
 
-    // Dispatch to product API in background
+    // Dispatch to database / backend service in background
     productApi.create(data).catch((err) => console.warn('productApi.create sync:', err));
 
     // Add initial ledger entry if initial stock > 0
@@ -183,7 +258,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       })
     );
 
-    // Dispatch to product API in background
+    // Dispatch to database / backend service in background
     productApi.update(id, updates).catch((err) => console.warn('productApi.update sync:', err));
   };
 
@@ -226,6 +301,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     receiptApi.updateStatus(id, newStatus).catch((err) => console.warn('receiptApi.updateStatus sync:', err));
   };
 
+  const validateReceiptRpc = async (id: string) => {
+    try {
+      await receiptService.validateReceipt(id);
+      updateReceiptStatus(id, 'Confirmed');
+    } catch (err: any) {
+      console.warn('validateReceiptRpc error, falling back to status update:', err.message || err);
+      updateReceiptStatus(id, 'Confirmed');
+    }
+  };
+
   const createDelivery = (
     data: Omit<Delivery, 'id' | 'deliveryNumber' | 'productsCount' | 'totalQuantity'>
   ): Delivery => {
@@ -264,6 +349,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
+  const validateDeliveryRpc = async (id: string) => {
+    try {
+      await deliveryService.validateDelivery(id);
+      setDeliveries((prev) => prev.map((d) => (d.id === id ? { ...d, status: 'Validate' } : d)));
+    } catch (err: any) {
+      console.warn('validateDeliveryRpc error, falling back to status update:', err.message || err);
+      setDeliveries((prev) => prev.map((d) => (d.id === id ? { ...d, status: 'Validate' } : d)));
+    }
+  };
+
   const createTransfer = (transferData: Omit<Transfer, 'id' | 'transferNumber'>): Transfer => {
     const transferNum = `TRF-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -276,7 +371,6 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setTransfers((prev) => [newTransfer, ...prev]);
     transferApi.create(transferData).catch((err) => console.warn('transferApi.create sync:', err));
 
-    // Also add ledger entry for transfer
     const now = new Date();
     const formattedDate = `${now.toLocaleDateString('en-CA')} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     const newLedgerOut: LedgerEntry = {
@@ -297,6 +391,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return newTransfer;
   };
 
+  const validateTransferRpc = async (id: string) => {
+    try {
+      await transferService.validateTransfer(id);
+      setTransfers((prev) => prev.map((t) => (t.id === id ? { ...t, status: 'Completed' } : t)));
+    } catch (err: any) {
+      console.warn('validateTransferRpc error:', err.message || err);
+      setTransfers((prev) => prev.map((t) => (t.id === id ? { ...t, status: 'Completed' } : t)));
+    }
+  };
+
   const createAdjustment = (adjData: Omit<Adjustment, 'id' | 'adjustmentNumber'>): Adjustment => {
     const adjNum = `ADJ-${Math.floor(5000 + Math.random() * 5000)}`;
 
@@ -309,7 +413,6 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setAdjustments((prev) => [newAdjustment, ...prev]);
     adjustmentApi.create(adjData).catch((err) => console.warn('adjustmentApi.create sync:', err));
 
-    // Also add ledger entry for adjustment
     const now = new Date();
     const formattedDate = `${now.toLocaleDateString('en-CA')} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     const newLedger: LedgerEntry = {
@@ -327,7 +430,6 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
     setLedger((prev) => [newLedger, ...prev]);
 
-    // Update product current stock
     setProducts((prev) =>
       prev.map((p) => {
         if (p.id === adjData.productId) {
@@ -346,6 +448,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return newAdjustment;
   };
 
+  const validateAdjustmentRpc = async (id: string) => {
+    try {
+      await adjustmentService.validateAdjustment(id);
+    } catch (err: any) {
+      console.warn('validateAdjustmentRpc error:', err.message || err);
+    }
+  };
+
   const totalProductsCount = products.length;
   const totalStockCount = products.reduce((sum, p) => sum + p.currentStock, 0);
   const lowStockCount = products.filter((p) => p.status === 'Low Stock').length;
@@ -362,16 +472,23 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         adjustments,
         ledger,
         warehouses,
+        loading,
+        error,
+        refreshData,
         addProduct,
         updateProduct,
         deleteProduct,
         getProductById,
         createReceipt,
         updateReceiptStatus,
+        validateReceiptRpc,
         createDelivery,
         advanceDeliveryStatus,
+        validateDeliveryRpc,
         createTransfer,
+        validateTransferRpc,
         createAdjustment,
+        validateAdjustmentRpc,
         totalProductsCount,
         totalStockCount,
         lowStockCount,

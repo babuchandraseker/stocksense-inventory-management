@@ -4,12 +4,16 @@ const WebSocket = require('ws');
 
 dotenv.config();
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const supabaseKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SUPABASE_KEY ||
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
   console.warn(
-    '[Supabase Warning] SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing in environment variables. Database operations will not be active until configured.'
+    '[Supabase Warning] SUPABASE_URL or SUPABASE_KEY is missing in environment variables.'
   );
 }
 
