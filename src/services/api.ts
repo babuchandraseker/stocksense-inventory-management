@@ -150,7 +150,7 @@ export const authApi = {
     );
   },
 
-  verifyOtp: async (phone: string, token: string): Promise<{ user: User; token: string }> => {
+  verifyOtp: async (phone: string, token: string): Promise<{ verified: boolean; message: string; phone: string }> => {
     return request(
       '/auth/verify-otp',
       { method: 'POST', body: JSON.stringify({ phone, token }) },
@@ -159,20 +159,34 @@ export const authApi = {
         if (storedCode && storedCode !== token && token !== '123456') {
           throw new Error('Invalid OTP code. Please try again.');
         }
-
-        const userId = `usr_phone_${phone.replace(/\D/g, '').slice(-4)}`;
-        const user: User = {
-          id: userId,
-          name: `User ${phone.slice(-4)}`,
+        return {
+          verified: true,
+          message: 'Phone number verified successfully',
           phone,
-          role: 'staff', // Default safe staff role for SMS users
+        };
+      }
+    );
+  },
+
+  register: async (payload: { name: string; email: string; password?: string; phone?: string; role?: string }): Promise<{ user: User; token: string }> => {
+    return request(
+      '/auth/register',
+      { method: 'POST', body: JSON.stringify(payload) },
+      () => {
+        const role = payload.email.toLowerCase().includes('admin') || payload.email.toLowerCase().includes('manager') ? 'manager' : 'staff';
+        const user: User = {
+          id: `usr_${Date.now()}`,
+          name: payload.name,
+          email: payload.email,
+          phone: payload.phone,
+          role,
           warehouseId: 'wh_main_01',
           warehouseName: 'Central Logistics Hub',
         };
-        const sessionToken = `token_otp_${userId}_${Date.now()}`;
-        localStorage.setItem('stocksense_token', sessionToken);
+        const token = `token_${user.id}_${Date.now()}`;
+        localStorage.setItem('stocksense_token', token);
         localStorage.setItem('stocksense_auth_user', JSON.stringify(user));
-        return { user, token: sessionToken };
+        return { user, token };
       }
     );
   },

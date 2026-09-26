@@ -2,52 +2,59 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { BrandLogo } from '../../components/common/BrandLogo';
 import { Input } from '../../components/common/Input';
 import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
 import {
   Mail,
   Lock,
+  User,
   KeyRound,
   ArrowRight,
   RotateCcw,
   CheckCircle2,
   ShieldCheck,
-  Smartphone,
+  UserPlus,
+  LogIn,
   Sparkles,
+  ChevronRight,
 } from 'lucide-react';
 
-type AuthMethod = 'password' | 'sms_otp';
+type AuthTab = 'signin' | 'new_user';
+type NewUserStep = 'phone' | 'otp' | 'profile';
 
 export const LoginPage: React.FC = () => {
-  const { login, sendSmsOtp, verifySmsOtp, isLoading, user } = useAuth();
+  const { login, sendSmsOtp, verifySmsOtp, register, isLoading, user } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
 
-  // Active Login Method Tab
-  const [authMethod, setAuthMethod] = useState<AuthMethod>('password');
+  // Active Tab
+  const [activeTab, setActiveTab] = useState<AuthTab>('signin');
 
-  // Email/Password States (Clean, empty by default — no fake auto-fills)
+  // Sign In States
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
 
-  // Phone SMS OTP States
+  // New User Onboarding States
+  const [newUserStep, setNewUserStep] = useState<NewUserStep>('phone');
   const [phone, setPhone] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
   const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [resendCountdown, setResendCountdown] = useState(0);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
-  const [devOtpHint, setDevOtpHint] = useState<string | null>(null);
 
-  // UI Error & Modal States
+  // Profile Details for New User
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+
+  // UI Error & Forgot Password Modal
   const [errorMessage, setErrorMessage] = useState('');
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSubmitted, setForgotSubmitted] = useState(false);
 
-  // Ref for OTP inputs
+  // OTP inputs ref
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Timer countdown for OTP resend
@@ -59,7 +66,7 @@ export const LoginPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [resendCountdown]);
 
-  // If already authenticated, redirect strictly based on assigned role
+  // Auth redirection
   useEffect(() => {
     if (user) {
       if (user.role === 'manager') {
@@ -70,8 +77,8 @@ export const LoginPage: React.FC = () => {
     }
   }, [user, navigate]);
 
-  // Handle Email + Password Login
-  const handlePasswordLogin = async (e: React.FormEvent) => {
+  // 1. Handle Email & Password Sign In
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -97,22 +104,20 @@ export const LoginPage: React.FC = () => {
         title: 'Authentication Successful',
         message: 'Welcome back to StockSense ERP.',
       });
-      // Navigation is handled automatically by the auth watcher
     } else {
       setErrorMessage('Invalid credentials. Please verify your email and password.');
       showToast({
         type: 'error',
         title: 'Login Failed',
-        message: 'Could not authenticate with the provided credentials.',
+        message: 'Could not log in with the provided credentials.',
       });
     }
   };
 
-  // Handle Send SMS OTP
+  // 2. New User Step 1: Send SMS OTP
   const handleSendOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setErrorMessage('');
-    setDevOtpHint(null);
 
     const cleanNumber = phone.replace(/\D/g, '');
     if (cleanNumber.length < 10) {
@@ -124,53 +129,46 @@ export const LoginPage: React.FC = () => {
     try {
       const formattedPhone = `+91${cleanNumber.slice(-10)}`;
       const result = await sendSmsOtp(formattedPhone);
-
       setIsSendingOtp(false);
+
       if (result.success) {
-        setOtpSent(true);
+        setNewUserStep('otp');
         setResendCountdown(60);
-        if (result.devCode) {
-          setDevOtpHint(result.devCode);
-        }
         showToast({
           type: 'success',
-          title: 'OTP Sent via SMS',
-          message: `A 6-digit verification code was sent to ${formattedPhone}.`,
+          title: 'SMS Sent',
+          message: `Verification code sent to ${formattedPhone}.`,
         });
-        // Auto-focus the first OTP input
         setTimeout(() => {
           otpInputRefs.current[0]?.focus();
         }, 100);
       } else {
-        setErrorMessage(result.message || 'Failed to send OTP. Please try again.');
+        setErrorMessage(result.message || 'Failed to dispatch SMS OTP. Please try again.');
       }
     } catch (_err) {
       setIsSendingOtp(false);
-      setErrorMessage('Service temporarily unavailable. Please try again.');
+      setErrorMessage('SMS service unavailable. Please check the phone number.');
     }
   };
 
-  // Handle OTP digit box change
+  // OTP digit navigation
   const handleOtpChange = (index: number, value: string) => {
     const digit = value.replace(/\D/g, '').slice(-1);
     const newDigits = [...otpDigits];
     newDigits[index] = digit;
     setOtpDigits(newDigits);
 
-    // Auto-advance to next input
     if (digit && index < 5) {
       otpInputRefs.current[index + 1]?.focus();
     }
   };
 
-  // Handle OTP backspace key navigation
   const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
       otpInputRefs.current[index - 1]?.focus();
     }
   };
 
-  // Handle OTP paste
   const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
     const pasteData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
@@ -181,52 +179,82 @@ export const LoginPage: React.FC = () => {
       newDigits[i] = pasteData[i] || '';
     }
     setOtpDigits(newDigits);
-
     const nextIndex = Math.min(pasteData.length, 5);
     otpInputRefs.current[nextIndex]?.focus();
   };
 
-  // Handle Verify OTP Submission
+  // 3. New User Step 2: Verify SMS OTP
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
     const otpCode = otpDigits.join('');
     if (otpCode.length !== 6) {
-      setErrorMessage('Please enter the full 6-digit verification code.');
+      setErrorMessage('Please enter the full 6-digit OTP code.');
       return;
     }
 
     const cleanNumber = phone.replace(/\D/g, '');
     const formattedPhone = `+91${cleanNumber.slice(-10)}`;
 
-    const success = await verifySmsOtp(formattedPhone, otpCode);
+    const isVerified = await verifySmsOtp(formattedPhone, otpCode);
 
-    if (success) {
+    if (isVerified) {
       showToast({
         type: 'success',
-        title: 'Phone Verified',
-        message: 'Successfully logged in with SMS OTP.',
+        title: 'Number Verified',
+        message: 'Phone verified! Now set up your account credentials.',
       });
+      setNewUserStep('profile');
     } else {
-      setErrorMessage('Invalid or expired OTP code. Please check and try again.');
+      setErrorMessage('Invalid OTP code. Please check and try again.');
       showToast({
         type: 'error',
         title: 'Verification Failed',
-        message: 'The entered OTP code is incorrect.',
+        message: 'The OTP entered is incorrect.',
       });
     }
   };
 
-  // Handle Forgot Password
+  // 4. New User Step 3: Complete Account Setup
+  const handleCompleteRegistration = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage('');
+
+    if (!newName.trim() || !newEmail.trim() || !newPassword) {
+      setErrorMessage('Please fill in all fields (Full Name, Email, Password).');
+      return;
+    }
+
+    const cleanNumber = phone.replace(/\D/g, '');
+    const formattedPhone = `+91${cleanNumber.slice(-10)}`;
+
+    const success = await register({
+      name: newName.trim(),
+      email: newEmail.trim(),
+      password: newPassword,
+      phone: formattedPhone,
+    });
+
+    if (success) {
+      showToast({
+        type: 'success',
+        title: 'Account Registered',
+        message: 'Welcome to StockSense! Your credentials have been saved.',
+      });
+    } else {
+      setErrorMessage('Could not register account. Please check your details.');
+    }
+  };
+
   const handleForgotPassword = (e: React.FormEvent) => {
     e.preventDefault();
     setForgotSubmitted(true);
     setTimeout(() => {
       showToast({
         type: 'success',
-        title: 'Reset instructions sent',
-        message: `Password reset instructions have been sent to ${forgotEmail || email}.`,
+        title: 'Reset link sent',
+        message: `Password instructions sent to ${forgotEmail || email}.`,
       });
       setIsForgotModalOpen(false);
       setForgotSubmitted(false);
@@ -234,110 +262,175 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 bg-radial-warm relative overflow-hidden font-sans">
-      {/* Subtle Background Glows */}
-      <div className="absolute -top-36 -right-36 w-96 h-96 bg-brand-caramelLight/50 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-36 -left-36 w-96 h-96 bg-amber-100/40 rounded-full blur-3xl pointer-events-none" />
+    <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 lg:p-8 bg-[#F8F5F2] font-sans relative overflow-hidden">
+      {/* Background Ambience */}
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#E2DDD7]/40 rounded-full blur-3xl pointer-events-none -z-0" />
+      <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-[#F0ECE8]/60 rounded-full blur-3xl pointer-events-none -z-0" />
 
-      <div className="w-full max-w-md relative z-10 animate-in fade-in zoom-in-95 duration-300">
-        {/* Main Authentication Card */}
-        <div className="bg-white rounded-3xl border border-brand-border shadow-warm-lg p-7 sm:p-9">
-          {/* Logo & Header */}
-          <div className="flex flex-col items-center text-center mb-6">
-            <BrandLogo size="lg" variant="dark" />
-            <h2 className="text-2xl font-extrabold text-brand-textDark mt-4 tracking-tight">
-              StockSense Portal
+      {/* Main Dual-Panel Luxury Frame */}
+      <div className="w-full max-w-5xl bg-white rounded-3xl border border-[#D5CCC5] shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 relative z-10">
+        
+        {/* LEFT SHOWCASE PANEL (Warehouse Imagery + Brand Philosophy) */}
+        <div className="hidden lg:flex lg:col-span-5 relative bg-[#26190F] text-[#F8F5F2] flex-col justify-between p-10 overflow-hidden">
+          {/* Background image overlay with rich brown tint */}
+          <div 
+            className="absolute inset-0 bg-cover bg-center opacity-30 mix-blend-luminosity scale-105 transition-transform duration-1000 hover:scale-100"
+            style={{ backgroundImage: `url('/assets/warehouse_hero.jpg')` }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#26190F] via-[#26190F]/70 to-transparent" />
+
+          {/* Top Logo */}
+          <div className="relative z-10 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-[#E2DDD7] text-[#3D291A] flex items-center justify-center font-serif font-bold text-xl shadow-md">
+              S
+            </div>
+            <div>
+              <h1 className="font-serif font-bold text-xl tracking-tight text-white">StockSense</h1>
+              <p className="text-[11px] text-[#D5CCC5] uppercase tracking-wider">Enterprise Logistics</p>
+            </div>
+          </div>
+
+          {/* Center Luxury Text */}
+          <div className="relative z-10 my-auto">
+            <span className="inline-block px-3 py-1 rounded-full bg-[#3D291A]/80 border border-[#895A38]/50 text-[#E2DDD7] text-xs font-semibold uppercase tracking-wider mb-4">
+              Inventory Management
+            </span>
+            <h2 className="font-serif text-3xl font-bold leading-tight text-white mb-3">
+              Organize <br />
+              <span className="italic font-normal text-[#E2DDD7]">Track</span> <br />
+              Grow.
             </h2>
-            <p className="text-xs text-brand-textMuted mt-1">
-              Secure Cloud Inventory & Warehouse Access
+            <p className="text-sm text-[#D5CCC5] leading-relaxed max-w-sm">
+              Smarter multi-location inventory, atomic receipts verification, and dynamic stock intelligence for modern supply chains.
             </p>
           </div>
 
-          {/* Authentication Method Selector Tabs */}
-          <div className="bg-brand-cream/80 p-1 rounded-2xl flex items-center mb-6 border border-brand-border">
+          {/* Bottom Trust Badge */}
+          <div className="relative z-10 pt-6 border-t border-[#3D291A] flex items-center justify-between text-xs text-[#D5CCC5]">
+            <span className="flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-[#895A38]" />
+              <span>RBAC Secured System</span>
+            </span>
+            <span className="font-serif italic text-white/80">₹ Rupee Valuation</span>
+          </div>
+        </div>
+
+        {/* RIGHT INTERACTIVE AUTH PANEL */}
+        <div className="lg:col-span-7 bg-[#F8F5F2] p-8 sm:p-12 flex flex-col justify-center">
+          
+          {/* Header */}
+          <div className="mb-6">
+            <h2 className="font-serif text-3xl font-bold text-[#30241F] tracking-tight">
+              {activeTab === 'signin' ? 'Welcome Back' : 'Create Account'}
+            </h2>
+            <p className="text-sm text-[#7F7065] mt-1 font-sans">
+              {activeTab === 'signin'
+                ? 'Sign in with your registered email and password to access your inventory.'
+                : 'Register as a new user with your mobile number to get access.'}
+            </p>
+          </div>
+
+          {/* Tab Navigation: "Sign In" vs "New User" */}
+          <div className="bg-[#E2DDD7]/70 p-1.5 rounded-2xl flex items-center mb-6 border border-[#D5CCC5]">
             <button
               type="button"
               onClick={() => {
-                setAuthMethod('password');
+                setActiveTab('signin');
                 setErrorMessage('');
               }}
               className={`
-                flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5
+                flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2
                 ${
-                  authMethod === 'password'
-                    ? 'bg-brand-primary text-white shadow-warm'
-                    : 'text-brand-textMedium hover:text-brand-textDark'
+                  activeTab === 'signin'
+                    ? 'bg-[#3D291A] text-white shadow-md'
+                    : 'text-[#4E3C2F] hover:text-[#30241F]'
                 }
               `}
             >
-              <Lock className="w-3.5 h-3.5" />
-              <span>Email & Password</span>
+              <LogIn className="w-4 h-4" />
+              <span>Sign In</span>
             </button>
             <button
               type="button"
               onClick={() => {
-                setAuthMethod('sms_otp');
+                setActiveTab('new_user');
                 setErrorMessage('');
+                setNewUserStep('phone');
               }}
               className={`
-                flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5
+                flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2
                 ${
-                  authMethod === 'sms_otp'
-                    ? 'bg-brand-primary text-white shadow-warm'
-                    : 'text-brand-textMedium hover:text-brand-textDark'
+                  activeTab === 'new_user'
+                    ? 'bg-[#3D291A] text-white shadow-md'
+                    : 'text-[#4E3C2F] hover:text-[#30241F]'
                 }
               `}
             >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span>Mobile SMS OTP</span>
+              <UserPlus className="w-4 h-4" />
+              <span>New User</span>
             </button>
           </div>
 
-          {/* Global Error Banner */}
+          {/* Error Message */}
           {errorMessage && (
-            <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-600 shrink-0" />
+            <div className="mb-5 p-3.5 rounded-xl bg-[#FDF2F0] border border-[#E6BFB8] text-[#A65D4D] text-xs font-semibold flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#A65D4D] shrink-0" />
               <span>{errorMessage}</span>
             </div>
           )}
 
-          {/* TAB 1: EMAIL & PASSWORD LOGIN */}
-          {authMethod === 'password' && (
-            <form onSubmit={handlePasswordLogin} className="space-y-4">
-              <Input
-                label="Registered Email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="e.g. manager@stocksense.com"
-                leftIcon={<Mail className="w-4 h-4 text-brand-textMuted" />}
-                required
-              />
+          {/* ========================================================================= */}
+          {/* TAB 1: SIGN IN (EMAIL & PASSWORD)                                         */}
+          {/* ========================================================================= */}
+          {activeTab === 'signin' && (
+            <form onSubmit={handleSignIn} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-[#30241F] mb-1.5">
+                  Email Address
+                </label>
+                <div className="relative flex items-center">
+                  <Mail className="absolute left-3.5 w-4 h-4 text-[#7F7065] pointer-events-none" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="e.g. manager@stocksense.com"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#D5CCC5] bg-[#F0ECE8] text-sm text-[#30241F] font-medium placeholder:text-[#A3968C] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#895A38]/30 focus:border-[#895A38] transition-all"
+                    required
+                  />
+                </div>
+              </div>
 
               <div>
-                <Input
-                  label="Password"
-                  isPassword
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your account password"
-                  leftIcon={<Lock className="w-4 h-4 text-brand-textMuted" />}
-                  required
-                />
-                <div className="flex items-center justify-between mt-2">
+                <label className="block text-xs font-bold text-[#30241F] mb-1.5">
+                  Password
+                </label>
+                <div className="relative flex items-center">
+                  <Lock className="absolute left-3.5 w-4 h-4 text-[#7F7065] pointer-events-none" />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#D5CCC5] bg-[#F0ECE8] text-sm text-[#30241F] font-medium placeholder:text-[#A3968C] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#895A38]/30 focus:border-[#895A38] transition-all"
+                    required
+                  />
+                </div>
+
+                <div className="flex items-center justify-between mt-2.5">
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input
                       type="checkbox"
                       checked={rememberMe}
                       onChange={(e) => setRememberMe(e.target.checked)}
-                      className="w-3.5 h-3.5 rounded border-brand-border text-brand-caramel focus:ring-brand-caramel accent-brand-caramel"
+                      className="w-4 h-4 rounded border-[#D5CCC5] text-[#3D291A] focus:ring-[#895A38] accent-[#3D291A]"
                     />
-                    <span className="text-xs text-brand-textMuted font-medium">Remember me</span>
+                    <span className="text-xs text-[#7F7065] font-medium">Keep me signed in</span>
                   </label>
                   <button
                     type="button"
                     onClick={() => setIsForgotModalOpen(true)}
-                    className="text-xs text-brand-caramel hover:text-brand-caramelHover font-semibold transition-colors"
+                    className="text-xs text-[#895A38] hover:text-[#3D291A] font-semibold transition-colors"
                   >
                     Forgot password?
                   </button>
@@ -350,25 +443,46 @@ export const LoginPage: React.FC = () => {
                 size="lg"
                 fullWidth
                 isLoading={isLoading}
-                className="mt-2 bg-gradient-to-r from-brand-primary to-brand-warm hover:from-brand-warm hover:to-brand-primary shadow-warm font-bold"
+                className="mt-3 bg-[#3D291A] hover:bg-[#895A38] text-white font-bold py-3 shadow-md rounded-xl transition-all"
               >
                 Sign In to Workspace
               </Button>
             </form>
           )}
 
-          {/* TAB 2: MOBILE SMS OTP LOGIN */}
-          {authMethod === 'sms_otp' && (
+          {/* ========================================================================= */}
+          {/* TAB 2: NEW USER ONBOARDING (MOBILE -> SMS OTP -> SET EMAIL & PASSWORD)    */}
+          {/* ========================================================================= */}
+          {activeTab === 'new_user' && (
             <div className="space-y-4">
-              {!otpSent ? (
-                // Step 1: Enter Phone Number
+              
+              {/* Step Indicators */}
+              <div className="flex items-center justify-between pb-3 border-b border-[#D5CCC5] text-xs">
+                <div className={`flex items-center gap-1.5 font-bold ${newUserStep === 'phone' ? 'text-[#3D291A]' : 'text-[#7F7065]'}`}>
+                  <span className="w-5 h-5 rounded-full bg-[#E2DDD7] flex items-center justify-center text-[10px]">1</span>
+                  <span>Mobile</span>
+                </div>
+                <ChevronRight className="w-3.5 h-3.5 text-[#D5CCC5]" />
+                <div className={`flex items-center gap-1.5 font-bold ${newUserStep === 'otp' ? 'text-[#3D291A]' : 'text-[#7F7065]'}`}>
+                  <span className="w-5 h-5 rounded-full bg-[#E2DDD7] flex items-center justify-center text-[10px]">2</span>
+                  <span>SMS OTP</span>
+                </div>
+                <ChevronRight className="w-3.5 h-3.5 text-[#D5CCC5]" />
+                <div className={`flex items-center gap-1.5 font-bold ${newUserStep === 'profile' ? 'text-[#3D291A]' : 'text-[#7F7065]'}`}>
+                  <span className="w-5 h-5 rounded-full bg-[#E2DDD7] flex items-center justify-center text-[10px]">3</span>
+                  <span>Credentials</span>
+                </div>
+              </div>
+
+              {/* STEP 1: MOBILE NUMBER INPUT */}
+              {newUserStep === 'phone' && (
                 <form onSubmit={handleSendOtp} className="space-y-4">
                   <div>
-                    <label className="block text-xs font-bold text-brand-textDark mb-1.5">
+                    <label className="block text-xs font-bold text-[#30241F] mb-1.5">
                       Mobile Number
                     </label>
                     <div className="relative flex items-center">
-                      <div className="absolute left-3 flex items-center gap-1.5 text-xs font-bold text-brand-textDark bg-brand-cream/80 px-2 py-1 rounded-md border border-brand-border pointer-events-none">
+                      <div className="absolute left-3 flex items-center gap-1.5 text-xs font-bold text-[#30241F] bg-[#E2DDD7] px-2 py-1 rounded-md border border-[#D5CCC5] pointer-events-none">
                         <span>🇮🇳</span>
                         <span>+91</span>
                       </div>
@@ -378,12 +492,12 @@ export const LoginPage: React.FC = () => {
                         value={phone}
                         onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
                         placeholder="98765 43210"
-                        className="w-full pl-24 pr-4 py-2.5 rounded-xl border border-brand-border bg-white text-sm text-brand-textDark font-medium placeholder:text-brand-textLight focus:outline-none focus:ring-2 focus:ring-brand-caramel/20 focus:border-brand-caramel transition-all"
+                        className="w-full pl-24 pr-4 py-2.5 rounded-xl border border-[#D5CCC5] bg-[#F0ECE8] text-sm text-[#30241F] font-medium placeholder:text-[#A3968C] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#895A38]/30 focus:border-[#895A38] transition-all"
                         required
                       />
                     </div>
-                    <p className="text-[11px] text-brand-textMuted mt-1.5">
-                      We will send a 6-digit one-time password via SMS to verify.
+                    <p className="text-[11px] text-[#7F7065] mt-1.5">
+                      A real 6-digit verification code will be sent to this number via SMS.
                     </p>
                   </div>
 
@@ -394,49 +508,37 @@ export const LoginPage: React.FC = () => {
                     fullWidth
                     isLoading={isSendingOtp}
                     rightIcon={<ArrowRight className="w-4 h-4" />}
-                    className="mt-2 bg-gradient-to-r from-brand-primary to-brand-warm hover:from-brand-warm hover:to-brand-primary shadow-warm font-bold"
+                    className="mt-2 bg-[#3D291A] hover:bg-[#895A38] text-white font-bold py-3 shadow-md rounded-xl transition-all"
                   >
-                    Send OTP via SMS
+                    Send Verification SMS
                   </Button>
                 </form>
-              ) : (
-                // Step 2: Enter 6-digit OTP
+              )}
+
+              {/* STEP 2: 6-DIGIT OTP VERIFICATION */}
+              {newUserStep === 'otp' && (
                 <form onSubmit={handleVerifyOtp} className="space-y-4">
-                  <div className="text-center mb-3">
-                    <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 mb-2">
+                  <div className="text-center">
+                    <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-[#F0ECE8] text-[#3D291A] border border-[#D5CCC5] mb-2">
                       <KeyRound className="w-5 h-5" />
                     </div>
-                    <p className="text-xs text-brand-textMuted">
+                    <p className="text-xs text-[#7F7065]">
                       Enter the 6-digit OTP code sent to{' '}
-                      <span className="font-bold text-brand-textDark">+91 {phone.slice(-10)}</span>
+                      <span className="font-bold text-[#30241F]">+91 {phone.slice(-10)}</span>
                     </p>
                     <button
                       type="button"
                       onClick={() => {
-                        setOtpSent(false);
+                        setNewUserStep('phone');
                         setOtpDigits(['', '', '', '', '', '']);
-                        setDevOtpHint(null);
                       }}
-                      className="text-xs text-brand-caramel hover:underline font-semibold mt-1 inline-block"
+                      className="text-xs text-[#895A38] hover:underline font-semibold mt-1 inline-block"
                     >
-                      Change Number
+                      Change Phone Number
                     </button>
                   </div>
 
-                  {/* Dev Test OTP Hint Banner */}
-                  {devOtpHint && (
-                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 font-medium">
-                        <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                        <span>Simulated SMS OTP:</span>
-                      </span>
-                      <span className="font-mono font-bold bg-white px-2 py-0.5 rounded border border-amber-300 text-amber-900 tracking-wider">
-                        {devOtpHint}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* 6-Digit OTP Box Grid */}
+                  {/* 6-box input */}
                   <div className="flex items-center justify-between gap-2 my-2">
                     {otpDigits.map((digit, idx) => (
                       <input
@@ -449,26 +551,26 @@ export const LoginPage: React.FC = () => {
                         onChange={(e) => handleOtpChange(idx, e.target.value)}
                         onKeyDown={(e) => handleOtpKeyDown(idx, e)}
                         onPaste={handleOtpPaste}
-                        className="w-12 h-12 text-center text-lg font-extrabold text-brand-textDark bg-brand-offwhite border-2 border-brand-border rounded-xl focus:border-brand-caramel focus:bg-white focus:outline-none focus:ring-4 focus:ring-brand-caramel/10 transition-all font-mono"
+                        className="w-11 sm:w-12 h-12 text-center text-lg font-extrabold text-[#30241F] bg-[#F0ECE8] border-2 border-[#D5CCC5] rounded-xl focus:border-[#895A38] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#895A38]/10 transition-all font-mono"
                       />
                     ))}
                   </div>
 
-                  {/* Resend OTP Timer */}
+                  {/* Resend Timer */}
                   <div className="flex items-center justify-between text-xs pt-1">
-                    <span className="text-brand-textMuted">Didn't receive code?</span>
+                    <span className="text-[#7F7065]">Didn't receive SMS?</span>
                     {resendCountdown > 0 ? (
-                      <span className="text-brand-textMedium font-semibold">
+                      <span className="text-[#4E3C2F] font-semibold">
                         Resend in {resendCountdown}s
                       </span>
                     ) : (
                       <button
                         type="button"
                         onClick={() => handleSendOtp()}
-                        className="text-brand-caramel hover:text-brand-caramelHover font-bold flex items-center gap-1 transition-colors"
+                        className="text-[#895A38] hover:text-[#3D291A] font-bold flex items-center gap-1 transition-colors"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
-                        <span>Resend OTP</span>
+                        <span>Resend SMS OTP</span>
                       </button>
                     )}
                   </div>
@@ -480,54 +582,93 @@ export const LoginPage: React.FC = () => {
                     fullWidth
                     isLoading={isLoading}
                     rightIcon={<CheckCircle2 className="w-4 h-4" />}
-                    className="mt-2 bg-gradient-to-r from-brand-primary to-brand-warm hover:from-brand-warm hover:to-brand-primary shadow-warm font-bold"
+                    className="mt-2 bg-[#3D291A] hover:bg-[#895A38] text-white font-bold py-3 shadow-md rounded-xl transition-all"
                   >
-                    Verify & Access Workspace
+                    Verify Phone Number
+                  </Button>
+                </form>
+              )}
+
+              {/* STEP 3: SET NAME, EMAIL & PASSWORD */}
+              {newUserStep === 'profile' && (
+                <form onSubmit={handleCompleteRegistration} className="space-y-3.5">
+                  <div className="p-3 rounded-xl bg-[#F1F6F0] border border-[#C8DAC4] text-[#6B8E62] text-xs font-semibold flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>Phone verified (+91 {phone.slice(-10)}). Now create your login credentials.</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#30241F] mb-1">
+                      Full Name
+                    </label>
+                    <div className="relative flex items-center">
+                      <User className="absolute left-3.5 w-4 h-4 text-[#7F7065] pointer-events-none" />
+                      <input
+                        type="text"
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        placeholder="e.g. Ramesh Kumar"
+                        className="w-full pl-10 pr-4 py-2 rounded-xl border border-[#D5CCC5] bg-[#F0ECE8] text-sm text-[#30241F] font-medium placeholder:text-[#A3968C] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#895A38]/30 focus:border-[#895A38] transition-all"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#30241F] mb-1">
+                      Email Address
+                    </label>
+                    <div className="relative flex items-center">
+                      <Mail className="absolute left-3.5 w-4 h-4 text-[#7F7065] pointer-events-none" />
+                      <input
+                        type="email"
+                        value={newEmail}
+                        onChange={(e) => setNewEmail(e.target.value)}
+                        placeholder="name@company.com"
+                        className="w-full pl-10 pr-4 py-2 rounded-xl border border-[#D5CCC5] bg-[#F0ECE8] text-sm text-[#30241F] font-medium placeholder:text-[#A3968C] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#895A38]/30 focus:border-[#895A38] transition-all"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#30241F] mb-1">
+                      Choose Password
+                    </label>
+                    <div className="relative flex items-center">
+                      <Lock className="absolute left-3.5 w-4 h-4 text-[#7F7065] pointer-events-none" />
+                      <input
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Create a secure password"
+                        className="w-full pl-10 pr-4 py-2 rounded-xl border border-[#D5CCC5] bg-[#F0ECE8] text-sm text-[#30241F] font-medium placeholder:text-[#A3968C] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#895A38]/30 focus:border-[#895A38] transition-all"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="lg"
+                    fullWidth
+                    isLoading={isLoading}
+                    rightIcon={<Sparkles className="w-4 h-4" />}
+                    className="mt-3 bg-[#3D291A] hover:bg-[#895A38] text-white font-bold py-3 shadow-md rounded-xl transition-all"
+                  >
+                    Complete & Enter ERP
                   </Button>
                 </form>
               )}
             </div>
           )}
 
-          {/* Divider */}
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-brand-border" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-white px-3 text-brand-textLight font-medium">
-                Enterprise Protected
-              </span>
-            </div>
+          {/* Footer Note */}
+          <div className="text-center mt-6 pt-4 border-t border-[#D5CCC5]/60 text-xs text-[#7F7065]">
+            <span>Secured Enterprise Cloud ERP &middot; Indian Valuations (₹)</span>
           </div>
 
-          {/* Strict Security Badge */}
-          <div className="p-3 bg-brand-cream/60 rounded-2xl border border-brand-border text-center text-xs text-brand-textMedium flex items-center justify-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-brand-caramel shrink-0" />
-            <span className="text-[11px] font-medium">
-              Role permissions are verified on login directly from Supabase DB.
-            </span>
-          </div>
-
-          {/* Footer note */}
-          <div className="text-center mt-5">
-            <p className="text-xs text-brand-textMuted">
-              Need access or new credentials?{' '}
-              <button
-                type="button"
-                onClick={() =>
-                  showToast({
-                    type: 'info',
-                    title: 'System Access',
-                    message: 'Please reach out to your warehouse administrator to allocate a staff/manager role.',
-                  })
-                }
-                className="text-brand-caramel hover:text-brand-caramelHover font-bold underline"
-              >
-                Contact Admin
-              </button>
-            </p>
-          </div>
         </div>
       </div>
 

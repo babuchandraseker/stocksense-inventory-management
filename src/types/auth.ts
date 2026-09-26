@@ -3,7 +3,7 @@ export type UserRole = 'manager' | 'staff';
 export interface User {
   id: string;
   name: string;
-  email?: string;
+  email: string;
   phone?: string;
   role: UserRole;
   avatarUrl?: string;
@@ -21,8 +21,15 @@ export interface LoginCredentials {
   email?: string;
   password?: string;
   phone?: string;
-  otp?: string;
   rememberMe?: boolean;
+}
+
+export interface RegisterPayload {
+  name: string;
+  email: string;
+  password?: string;
+  phone?: string;
+  role?: UserRole;
 }
 
 export interface SendOtpPayload {

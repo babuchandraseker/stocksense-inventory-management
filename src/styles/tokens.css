@@ -1,34 +1,54 @@
 :root {
-  /* StockSense Brown Design System Palette */
-  --color-brand-darkest: #140A05;
-  --color-brand-sidebar: #1E110A;
-  --color-brand-sidebar-hover: #2A180E;
-  --color-brand-sidebar-border: #351F14;
-  --color-brand-primary: #2D1810;
-  --color-brand-warm: #4E2C1D;
-  --color-brand-caramel: #9A4C1C;
-  --color-brand-caramel-hover: #823D14;
-  --color-brand-caramel-light: #FBEFE8;
-  --color-brand-gold: #D97706;
-  --color-brand-gold-light: #FEF3C7;
-  --color-brand-cream: #F7F2EC;
-  --color-brand-cream-dark: #EFE6DC;
-  --color-brand-offwhite: #FDFBF9;
-  --color-brand-border: #E8DFD5;
-  --color-brand-border-dark: #D5C8B8;
-  --color-brand-text-dark: #20140D;
-  --color-brand-text-medium: #5C4A3E;
-  --color-brand-text-muted: #8C7B70;
-  --color-brand-text-light: #B8ABA0;
+  /* StockSense / Stockly Luxury Minimalist Palette */
+  --primary: #3D291A;
+  --primary-dark: #26190F;
+  --secondary: #4E3C2F;
+  --accent: #895A38;
+
+  --background: #F8F5F2;
+  --card: #F0ECE8;
+  --cream: #E2DDD7;
+
+  --text: #30241F;
+  --text-muted: #7F7065;
+  --border: #D5CCC5;
+
+  --white: #FFFFFF;
 
   /* Status Tokens */
-  --color-success: #15803D;
-  --color-success-bg: #ECFDF5;
-  --color-success-border: #A7F3D0;
-  --color-warning: #B45309;
-  --color-warning-bg: #FFFBEB;
-  --color-warning-border: #FDE68A;
-  --color-danger: #B91C1C;
-  --color-danger-bg: #FEF2F2;
-  --color-danger-border: #FECACA;
+  --success: #6B8E62;
+  --warning: #B8865B;
+  --danger: #A65D4D;
+
+  /* Brand mapped tokens for compatibility */
+  --color-brand-primary: #3D291A;
+  --color-brand-darkest: #26190F;
+  --color-brand-sidebar: #26190F;
+  --color-brand-sidebar-hover: #332215;
+  --color-brand-sidebar-border: #3D291A;
+  --color-brand-warm: #4E3C2F;
+  --color-brand-caramel: #895A38;
+  --color-brand-caramel-hover: #744A2D;
+  --color-brand-caramel-light: #F0ECE8;
+  --color-brand-gold: #B8865B;
+  --color-brand-gold-light: #FAF5EE;
+  --color-brand-cream: #F0ECE8;
+  --color-brand-cream-dark: #E2DDD7;
+  --color-brand-offwhite: #F8F5F2;
+  --color-brand-border: #D5CCC5;
+  --color-brand-border-dark: #C2B6AC;
+  --color-brand-text-dark: #30241F;
+  --color-brand-text-medium: #4E3C2F;
+  --color-brand-text-muted: #7F7065;
+  --color-brand-text-light: #A3968C;
+
+  --color-success: #6B8E62;
+  --color-success-bg: #F1F6F0;
+  --color-success-border: #C8DAC4;
+  --color-warning: #B8865B;
+  --color-warning-bg: #FAF5EE;
+  --color-warning-border: #E8D5C2;
+  --color-danger: #A65D4D;
+  --color-danger-bg: #FDF2F0;
+  --color-danger-border: #E6BFB8;
 }

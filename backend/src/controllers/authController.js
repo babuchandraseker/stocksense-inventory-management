@@ -2,7 +2,7 @@ const authService = require('../services/authService');
 
 /**
  * Auth Controller
- * Handles user authentication, SMS OTP requests, verification & profile management.
+ * Handles user authentication, SMS OTP requests, verification & new user registration.
  */
 
 /**
@@ -88,13 +88,50 @@ const verifyOtp = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
-      message: 'OTP verification successful',
+      message: 'Phone number verified successfully',
       data: authResult,
     });
   } catch (error) {
     return res.status(401).json({
       success: false,
-      message: error.message || 'Invalid or expired OTP',
+      message: error.message || 'Invalid or expired OTP code',
+    });
+  }
+};
+
+/**
+ * @desc    Register New User (After Phone OTP Verification)
+ * @route   POST /api/auth/register
+ * @access  Public
+ */
+const register = async (req, res, next) => {
+  try {
+    const { name, email, password, phone, role } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name, email, and password are required',
+      });
+    }
+
+    const result = await authService.registerUser({
+      name,
+      email,
+      password,
+      phone,
+      role,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Account created successfully',
+      data: result,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Registration failed',
     });
   }
 };
@@ -192,6 +229,7 @@ module.exports = {
   login,
   sendOtp,
   verifyOtp,
+  register,
   logout,
   getMe,
   testAuth,

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, UserRole, LoginCredentials } from '../types/auth';
+import { User, UserRole, LoginCredentials, RegisterPayload } from '../types/auth';
 import { authApi } from '../services/api';
 
 interface AuthContextType {
@@ -10,6 +10,7 @@ interface AuthContextType {
   login: (credentials: LoginCredentials) => Promise<boolean>;
   sendSmsOtp: (phone: string) => Promise<{ success: boolean; message: string; isDevMode?: boolean; devCode?: string }>;
   verifySmsOtp: (phone: string, token: string) => Promise<boolean>;
+  register: (payload: RegisterPayload) => Promise<boolean>;
   logout: () => void;
 }
 
@@ -61,6 +62,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     try {
       const res = await authApi.verifyOtp(phone, token);
+      setIsLoading(false);
+      return !!res.verified;
+    } catch {
+      setIsLoading(false);
+      return false;
+    }
+  };
+
+  const register = async (payload: RegisterPayload): Promise<boolean> => {
+    setIsLoading(true);
+    try {
+      const res = await authApi.register(payload);
       if (res && res.user) {
         setUser(res.user);
         setIsLoading(false);
@@ -91,6 +104,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         sendSmsOtp,
         verifySmsOtp,
+        register,
         logout,
       }}
     >

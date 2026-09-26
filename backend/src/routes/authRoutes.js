@@ -6,6 +6,7 @@ const {
   login,
   sendOtp,
   verifyOtp,
+  register,
   logout,
   getMe,
   testAuth,
@@ -35,6 +36,13 @@ router.post('/send-otp', sendOtp);
  * @access  Public
  */
 router.post('/verify-otp', verifyOtp);
+
+/**
+ * @route   POST /api/auth/register
+ * @desc    Register new user after OTP verification
+ * @access  Public
+ */
+router.post('/register', register);
 
 /**
  * @route   POST /api/auth/logout
