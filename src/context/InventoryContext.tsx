@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   Product,
   Receipt,
@@ -7,25 +7,24 @@ import {
   Adjustment,
   LedgerEntry,
   Warehouse,
+  LocationItem,
+  LocationStock,
   ProductStatus,
+  ReceiptStatus,
+  DeliveryStatus,
 } from '../types/inventory';
 import {
   INITIAL_PRODUCTS,
+  INITIAL_WAREHOUSES,
+  INITIAL_LOCATIONS,
+  INITIAL_LOCATION_STOCKS,
   INITIAL_RECEIPTS,
   INITIAL_DELIVERIES,
   INITIAL_TRANSFERS,
   INITIAL_ADJUSTMENTS,
   INITIAL_LEDGER,
-  INITIAL_WAREHOUSES,
 } from '../data/mockData';
 import {
-  productService,
-  receiptService,
-  deliveryService,
-  transferService,
-  adjustmentService,
-  ledgerService,
-  warehouseService,
   productApi,
   receiptApi,
   deliveryApi,
@@ -33,19 +32,24 @@ import {
   adjustmentApi,
 } from '../services/api';
 
+interface StockSummaryItem {
+  product: string;
+  sku: string;
+  quantity: number;
+  category: string;
+  unit: string;
+}
+
 interface InventoryContextType {
   products: Product[];
+  warehouses: Warehouse[];
+  locations: LocationItem[];
+  locationStocks: LocationStock[];
   receipts: Receipt[];
   deliveries: Delivery[];
   transfers: Transfer[];
   adjustments: Adjustment[];
   ledger: LedgerEntry[];
-  warehouses: Warehouse[];
-  loading: boolean;
-  error: string | null;
-
-  // Refresh
-  refreshData: () => Promise<void>;
 
   // Product actions
   addProduct: (product: Omit<Product, 'id' | 'lastUpdated' | 'status'>) => Product;
@@ -53,46 +57,96 @@ interface InventoryContextType {
   deleteProduct: (id: string) => void;
   getProductById: (id: string) => Product | undefined;
 
+  // Location & Stock helpers
+  getLocationStocksForProduct: (productId: string) => LocationStock[];
+
   // Receipt actions
   createReceipt: (receipt: Omit<Receipt, 'id' | 'receiptNumber' | 'createdAt' | 'productsCount' | 'totalQuantity'>) => Receipt;
-  updateReceiptStatus: (id: string, status: Receipt['status']) => void;
-  validateReceiptRpc: (id: string) => Promise<void>;
+  updateReceiptStatus: (id: string, status: ReceiptStatus) => void;
 
   // Delivery actions
   createDelivery: (delivery: Omit<Delivery, 'id' | 'deliveryNumber' | 'productsCount' | 'totalQuantity'>) => Delivery;
   advanceDeliveryStatus: (id: string) => void;
-  validateDeliveryRpc: (id: string) => Promise<void>;
 
   // Transfer actions
   createTransfer: (transfer: Omit<Transfer, 'id' | 'transferNumber'>) => Transfer;
-  validateTransferRpc: (id: string) => Promise<void>;
 
   // Adjustment actions
   createAdjustment: (adjustment: Omit<Adjustment, 'id' | 'adjustmentNumber'>) => Adjustment;
-  validateAdjustmentRpc: (id: string) => Promise<void>;
 
-  // Stats
+  // Dynamic KPIs
   totalProductsCount: number;
   totalStockCount: number;
   lowStockCount: number;
   outOfStockCount: number;
   totalStockValue: number;
+  pendingReceiptsCount: number;
+  pendingDeliveriesCount: number;
+  scheduledTransfersCount: number;
+
+  // Graph datasets
+  stockSummary: StockSummaryItem[];
 }
 
 const InventoryContext = createContext<InventoryContextType | undefined>(undefined);
 
+const STORAGE_VERSION = 'v2_stocksense_problem_statement';
+
 export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  // Clear old unrelated localstorage data if from v1
+  useEffect(() => {
+    const currentVersion = localStorage.getItem('stocksense_data_version');
+    if (currentVersion !== STORAGE_VERSION) {
+      localStorage.removeItem('stocksense_products');
+      localStorage.removeItem('stocksense_receipts');
+      localStorage.removeItem('stocksense_deliveries');
+      localStorage.removeItem('stocksense_transfers');
+      localStorage.removeItem('stocksense_adjustments');
+      localStorage.removeItem('stocksense_ledger');
+      localStorage.removeItem('stocksense_location_stocks');
+      localStorage.setItem('stocksense_data_version', STORAGE_VERSION);
+    }
+  }, []);
 
   const [products, setProducts] = useState<Product[]>(() => {
     const saved = localStorage.getItem('stocksense_products');
-    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Ensure no old products persist
+        if (parsed.some((p: Product) => p.name === 'iPhone 15' || p.category === 'Electronics')) {
+          return INITIAL_PRODUCTS;
+        }
+        return parsed;
+      } catch {
+        return INITIAL_PRODUCTS;
+      }
+    }
+    return INITIAL_PRODUCTS;
+  });
+
+  const [warehouses] = useState<Warehouse[]>(INITIAL_WAREHOUSES);
+  const [locations] = useState<LocationItem[]>(INITIAL_LOCATIONS);
+
+  const [locationStocks, setLocationStocks] = useState<LocationStock[]>(() => {
+    const saved = localStorage.getItem('stocksense_location_stocks');
+    return saved ? JSON.parse(saved) : INITIAL_LOCATION_STOCKS;
   });
 
   const [receipts, setReceipts] = useState<Receipt[]>(() => {
     const saved = localStorage.getItem('stocksense_receipts');
-    return saved ? JSON.parse(saved) : INITIAL_RECEIPTS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.some((r: Receipt) => r.supplier.includes('Electronics'))) {
+          return INITIAL_RECEIPTS;
+        }
+        return parsed;
+      } catch {
+        return INITIAL_RECEIPTS;
+      }
+    }
+    return INITIAL_RECEIPTS;
   });
 
   const [deliveries, setDeliveries] = useState<Delivery[]>(() => {
@@ -115,67 +169,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return saved ? JSON.parse(saved) : INITIAL_LEDGER;
   });
 
-  const [warehouses, setWarehouses] = useState<Warehouse[]>(INITIAL_WAREHOUSES);
-
-  const refreshData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [
-        prods,
-        recs,
-        dels,
-        trfs,
-        adjs,
-        leds,
-        whs,
-      ] = await Promise.allSettled([
-        productService.getProducts(),
-        receiptService.listReceipts(),
-        deliveryService.listDeliveries(),
-        transferService.listTransfers(),
-        adjustmentService.listAdjustments(),
-        ledgerService.getMovementHistory(),
-        warehouseService.getWarehouses(),
-      ]);
-
-      if (prods.status === 'fulfilled' && prods.value.length > 0) {
-        setProducts(prods.value);
-      }
-      if (recs.status === 'fulfilled' && recs.value.length > 0) {
-        setReceipts(recs.value);
-      }
-      if (dels.status === 'fulfilled' && dels.value.length > 0) {
-        setDeliveries(dels.value);
-      }
-      if (trfs.status === 'fulfilled' && trfs.value.length > 0) {
-        setTransfers(trfs.value);
-      }
-      if (adjs.status === 'fulfilled' && adjs.value.length > 0) {
-        setAdjustments(adjs.value);
-      }
-      if (leds.status === 'fulfilled' && leds.value.length > 0) {
-        setLedger(leds.value);
-      }
-      if (whs.status === 'fulfilled' && whs.value.length > 0) {
-        setWarehouses(whs.value);
-      }
-    } catch (err: any) {
-      console.warn('[InventoryContext] Live fetch fallback:', err.message || err);
-      setError(err.message || 'Failed to sync with live database');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Fetch initial live data on mount
-  useEffect(() => {
-    refreshData();
-  }, [refreshData]);
-
+  // Sync to local storage
   useEffect(() => {
     localStorage.setItem('stocksense_products', JSON.stringify(products));
   }, [products]);
+
+  useEffect(() => {
+    localStorage.setItem('stocksense_location_stocks', JSON.stringify(locationStocks));
+  }, [locationStocks]);
 
   useEffect(() => {
     localStorage.setItem('stocksense_receipts', JSON.stringify(receipts));
@@ -203,6 +204,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return 'In Stock';
   };
 
+  const getLocationStocksForProduct = (productId: string): LocationStock[] => {
+    return locationStocks.filter((ls) => ls.productId === productId);
+  };
+
+  // 1. ADD PRODUCT
   const addProduct = (data: Omit<Product, 'id' | 'lastUpdated' | 'status'>): Product => {
     const now = new Date();
     const formattedDate = `${now.toLocaleDateString('en-CA')} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
@@ -217,32 +223,47 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     setProducts((prev) => [newProduct, ...prev]);
 
-    // Dispatch to database / backend service in background
-    productApi.create(data).catch((err) => console.warn('productApi.create sync:', err));
-
-    // Add initial ledger entry if initial stock > 0
+    // Create default location stock in Main Warehouse
     if (data.currentStock > 0) {
+      const newLocStock: LocationStock = {
+        id: `ls-${Date.now()}`,
+        productId: newProduct.id,
+        productName: newProduct.name,
+        sku: newProduct.sku,
+        warehouseId: data.warehouseId || 'wh-main',
+        warehouseName: data.warehouseName || 'Main Warehouse',
+        locationId: 'loc-main-wh',
+        locationName: 'Main Warehouse',
+        quantity: data.currentStock,
+        unit: data.unit,
+      };
+      setLocationStocks((prev) => [...prev, newLocStock]);
+
       const newLedger: LedgerEntry = {
         id: `led-${Date.now()}`,
         date: formattedDate,
         productId: newProduct.id,
         productName: newProduct.name,
         sku: newProduct.sku,
-        warehouseId: newProduct.warehouseId,
-        warehouseName: newProduct.warehouseName,
-        transactionType: 'RECEIPT',
+        warehouseId: data.warehouseId || 'wh-main',
+        warehouseName: data.warehouseName || 'Main Warehouse',
+        locationName: 'Main Warehouse',
+        transactionType: 'INITIAL_STOCK',
         quantity: data.currentStock,
-        reference: 'INITIAL-STOCK',
+        reference: `INIT-${newProduct.sku}`,
         createdBy: 'Admin',
         previousStock: 0,
         newStock: data.currentStock,
+        notes: 'Initial stock intake',
       };
       setLedger((prev) => [newLedger, ...prev]);
     }
 
+    productApi.create(data).catch(() => {});
     return newProduct;
   };
 
+  // 2. UPDATE PRODUCT
   const updateProduct = (id: string, updates: Partial<Product>) => {
     const now = new Date();
     const formattedDate = `${now.toLocaleDateString('en-CA')} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
@@ -258,26 +279,27 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       })
     );
 
-    // Dispatch to database / backend service in background
-    productApi.update(id, updates).catch((err) => console.warn('productApi.update sync:', err));
+    productApi.update(id, updates).catch(() => {});
   };
 
+  // 3. DELETE PRODUCT
   const deleteProduct = (id: string) => {
     setProducts((prev) => prev.filter((p) => p.id !== id));
-    productApi.delete(id).catch((err) => console.warn('productApi.delete sync:', err));
+    setLocationStocks((prev) => prev.filter((ls) => ls.productId !== id));
+    productApi.delete(id).catch(() => {});
   };
 
   const getProductById = (id: string): Product | undefined => {
     return products.find((p) => p.id === id || p.sku === id);
   };
 
+  // 4. CREATE RECEIPT
   const createReceipt = (
     data: Omit<Receipt, 'id' | 'receiptNumber' | 'createdAt' | 'productsCount' | 'totalQuantity'>
   ): Receipt => {
     const now = new Date();
     const formattedDate = `${now.toLocaleDateString('en-CA')} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     const receiptNum = `REC-${Math.floor(1000 + Math.random() * 9000)}`;
-
     const totalQty = data.items.reduce((acc, item) => acc + item.quantity, 0);
 
     const newReceipt: Receipt = {
@@ -290,27 +312,131 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
 
     setReceipts((prev) => [newReceipt, ...prev]);
-    receiptApi.create(data).catch((err) => console.warn('receiptApi.create sync:', err));
+
+    // If receipt is created directly as Confirmed, immediately apply stock & ledger
+    if (data.status === 'Confirmed') {
+      data.items.forEach((item) => {
+        applyReceiptStockIncrease(item.productId, item.quantity, data.warehouseId, data.warehouseName, data.locationName || 'Main Warehouse', receiptNum, data.createdBy);
+      });
+    }
+
+    receiptApi.create(data).catch(() => {});
     return newReceipt;
   };
 
-  const updateReceiptStatus = (id: string, newStatus: Receipt['status']) => {
+  // Helper for Receipt Stock Increase
+  const applyReceiptStockIncrease = (
+    productId: string,
+    quantity: number,
+    warehouseId: string,
+    warehouseName: string,
+    locationName: string,
+    reference: string,
+    createdBy: string
+  ) => {
+    const now = new Date();
+    const formattedDate = `${now.toLocaleDateString('en-CA')} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+    // 1. Update Product Total Stock
+    let previousStock = 0;
+    let newStock = 0;
+    let pName = '';
+    let pSku = '';
+
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id === productId || p.name === productId || p.sku === productId) {
+          previousStock = p.currentStock;
+          newStock = p.currentStock + quantity;
+          pName = p.name;
+          pSku = p.sku;
+          return {
+            ...p,
+            currentStock: newStock,
+            status: calculateStatus(newStock, p.reorderLevel),
+            lastUpdated: formattedDate,
+          };
+        }
+        return p;
+      })
+    );
+
+    // 2. Update Location Stock
+    setLocationStocks((prev) => {
+      const targetLoc = locationName || 'Main Warehouse';
+      const existing = prev.find(
+        (ls) =>
+          (ls.productId === productId || ls.productName === pName) &&
+          ls.locationName.toLowerCase() === targetLoc.toLowerCase()
+      );
+
+      if (existing) {
+        return prev.map((ls) =>
+          ls.id === existing.id ? { ...ls, quantity: ls.quantity + quantity } : ls
+        );
+      } else {
+        const newLs: LocationStock = {
+          id: `ls-${Date.now()}-${Math.random()}`,
+          productId,
+          productName: pName || 'Product',
+          sku: pSku || 'SKU',
+          warehouseId: warehouseId || 'wh-main',
+          warehouseName: warehouseName || 'Main Warehouse',
+          locationId: `loc-${Date.now()}`,
+          locationName: targetLoc,
+          quantity,
+          unit: 'kg',
+        };
+        return [...prev, newLs];
+      }
+    });
+
+    // 3. Create Stock Ledger entry
+    const newLedger: LedgerEntry = {
+      id: `led-${Date.now()}-${Math.random()}`,
+      date: formattedDate,
+      productId,
+      productName: pName || 'Product',
+      sku: pSku || 'SKU',
+      warehouseId: warehouseId || 'wh-main',
+      warehouseName: warehouseName || 'Main Warehouse',
+      locationName: locationName || 'Main Warehouse',
+      transactionType: 'RECEIPT',
+      quantity,
+      reference,
+      createdBy: createdBy || 'Admin',
+      previousStock,
+      newStock,
+      notes: `Consignment intake +${quantity}`,
+    };
+    setLedger((prev) => [newLedger, ...prev]);
+  };
+
+  // 5. UPDATE RECEIPT STATUS
+  const updateReceiptStatus = (id: string, newStatus: ReceiptStatus) => {
+    const target = receipts.find((r) => r.id === id);
+    if (target && target.status !== 'Confirmed' && newStatus === 'Confirmed') {
+      // Transitioning to Confirmed -> Apply Stock & Ledger
+      target.items.forEach((item) => {
+        applyReceiptStockIncrease(
+          item.productId,
+          item.quantity,
+          target.warehouseId,
+          target.warehouseName,
+          target.locationName || 'Main Warehouse',
+          target.receiptNumber,
+          target.createdBy
+        );
+      });
+    }
+
     setReceipts((prev) =>
       prev.map((r) => (r.id === id ? { ...r, status: newStatus } : r))
     );
-    receiptApi.updateStatus(id, newStatus).catch((err) => console.warn('receiptApi.updateStatus sync:', err));
+    receiptApi.updateStatus(id, newStatus).catch(() => {});
   };
 
-  const validateReceiptRpc = async (id: string) => {
-    try {
-      await receiptService.validateReceipt(id);
-      updateReceiptStatus(id, 'Confirmed');
-    } catch (err: any) {
-      console.warn('validateReceiptRpc error, falling back to status update:', err.message || err);
-      updateReceiptStatus(id, 'Confirmed');
-    }
-  };
-
+  // 6. CREATE DELIVERY
   const createDelivery = (
     data: Omit<Delivery, 'id' | 'deliveryNumber' | 'productsCount' | 'totalQuantity'>
   ): Delivery => {
@@ -326,41 +452,142 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
 
     setDeliveries((prev) => [newDelivery, ...prev]);
-    deliveryApi.create(data).catch((err) => console.warn('deliveryApi.create sync:', err));
+
+    // If created directly in Validate status
+    if (data.status === 'Validate') {
+      data.items.forEach((item) => {
+        applyDeliveryStockDecrease(
+          item.productId,
+          item.quantity,
+          data.warehouseId,
+          data.warehouseName,
+          data.locationName || 'Main Warehouse',
+          deliveryNum,
+          data.createdBy
+        );
+      });
+    }
+
+    deliveryApi.create(data).catch(() => {});
     return newDelivery;
   };
 
+  // Helper for Delivery Stock Decrease
+  const applyDeliveryStockDecrease = (
+    productId: string,
+    quantity: number,
+    warehouseId: string,
+    warehouseName: string,
+    locationName: string,
+    reference: string,
+    createdBy: string
+  ) => {
+    const now = new Date();
+    const formattedDate = `${now.toLocaleDateString('en-CA')} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+    let previousStock = 0;
+    let newStock = 0;
+    let pName = '';
+    let pSku = '';
+
+    // 1. Update Product Total Stock
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id === productId || p.name === productId || p.sku === productId) {
+          previousStock = p.currentStock;
+          newStock = Math.max(0, p.currentStock - quantity);
+          pName = p.name;
+          pSku = p.sku;
+          return {
+            ...p,
+            currentStock: newStock,
+            status: calculateStatus(newStock, p.reorderLevel),
+            lastUpdated: formattedDate,
+          };
+        }
+        return p;
+      })
+    );
+
+    // 2. Update Location Stock
+    setLocationStocks((prev) => {
+      const targetLoc = locationName || 'Main Warehouse';
+      return prev.map((ls) => {
+        if (
+          (ls.productId === productId || ls.productName === pName) &&
+          ls.locationName.toLowerCase() === targetLoc.toLowerCase()
+        ) {
+          return { ...ls, quantity: Math.max(0, ls.quantity - quantity) };
+        }
+        return ls;
+      });
+    });
+
+    // 3. Create Stock Ledger entry
+    const newLedger: LedgerEntry = {
+      id: `led-${Date.now()}-${Math.random()}`,
+      date: formattedDate,
+      productId,
+      productName: pName || 'Product',
+      sku: pSku || 'SKU',
+      warehouseId: warehouseId || 'wh-main',
+      warehouseName: warehouseName || 'Main Warehouse',
+      locationName: locationName || 'Main Warehouse',
+      transactionType: 'DELIVERY',
+      quantity: -quantity,
+      reference,
+      createdBy: createdBy || 'Staff',
+      previousStock,
+      newStock,
+      notes: `Customer Order fulfillment -${quantity}`,
+    };
+    setLedger((prev) => [newLedger, ...prev]);
+  };
+
+  // 7. ADVANCE DELIVERY STATUS
   const advanceDeliveryStatus = (id: string) => {
-    const statusOrder: Delivery['status'][] = ['Draft', 'Pick', 'Pack', 'Validate'];
-    let nextSt: Delivery['status'] | null = null;
+    const statusOrder: DeliveryStatus[] = ['Draft', 'Pick', 'Pack', 'Validate'];
+    let nextStatus: DeliveryStatus | null = null;
+    let deliveryToUpdate: Delivery | null = null;
+
     setDeliveries((prev) =>
       prev.map((d) => {
         if (d.id === id) {
           const currentIndex = statusOrder.indexOf(d.status);
-          const nextStatus = currentIndex < statusOrder.length - 1 ? statusOrder[currentIndex + 1] : d.status;
-          nextSt = nextStatus;
+          nextStatus = currentIndex < statusOrder.length - 1 ? statusOrder[currentIndex + 1] : d.status;
+          deliveryToUpdate = d;
           return { ...d, status: nextStatus };
         }
         return d;
       })
     );
-    if (nextSt) {
-      deliveryApi.updateStatus(id, nextSt).catch((err) => console.warn('deliveryApi.updateStatus sync:', err));
+
+    if (nextStatus === 'Validate' && deliveryToUpdate) {
+      const d = deliveryToUpdate as Delivery;
+      d.items.forEach((item) => {
+        applyDeliveryStockDecrease(
+          item.productId,
+          item.quantity,
+          d.warehouseId,
+          d.warehouseName,
+          d.locationName || 'Main Warehouse',
+          d.deliveryNumber,
+          d.createdBy
+        );
+      });
+    }
+
+    if (nextStatus) {
+      deliveryApi.updateStatus(id, nextStatus).catch(() => {});
     }
   };
 
-  const validateDeliveryRpc = async (id: string) => {
-    try {
-      await deliveryService.validateDelivery(id);
-      setDeliveries((prev) => prev.map((d) => (d.id === id ? { ...d, status: 'Validate' } : d)));
-    } catch (err: any) {
-      console.warn('validateDeliveryRpc error, falling back to status update:', err.message || err);
-      setDeliveries((prev) => prev.map((d) => (d.id === id ? { ...d, status: 'Validate' } : d)));
-    }
-  };
-
+  // 8. CREATE INTERNAL TRANSFER
+  // Crucial Rule: TOTAL COMPANY STOCK REMAINS UNCHANGED!
   const createTransfer = (transferData: Omit<Transfer, 'id' | 'transferNumber'>): Transfer => {
     const transferNum = `TRF-${Math.floor(1000 + Math.random() * 9000)}`;
+    const now = new Date();
+    const formattedDate = `${now.toLocaleDateString('en-CA')} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
     const newTransfer: Transfer = {
       ...transferData,
@@ -369,40 +596,92 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
 
     setTransfers((prev) => [newTransfer, ...prev]);
-    transferApi.create(transferData).catch((err) => console.warn('transferApi.create sync:', err));
 
-    const now = new Date();
-    const formattedDate = `${now.toLocaleDateString('en-CA')} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    const newLedgerOut: LedgerEntry = {
-      id: `led-${Date.now()}`,
+    // Update location stocks: Source decreases, Destination increases
+    const fromLoc = transferData.fromLocationName || 'Main Warehouse';
+    const toLoc = transferData.toLocationName || transferData.toWarehouseName || 'Production Floor';
+
+    setLocationStocks((prev) => {
+      let foundDest = false;
+      const updated = prev.map((ls) => {
+        if (
+          (ls.productId === transferData.productId || ls.sku === transferData.sku) &&
+          ls.locationName.toLowerCase() === fromLoc.toLowerCase()
+        ) {
+          return { ...ls, quantity: Math.max(0, ls.quantity - transferData.quantity) };
+        }
+        if (
+          (ls.productId === transferData.productId || ls.sku === transferData.sku) &&
+          ls.locationName.toLowerCase() === toLoc.toLowerCase()
+        ) {
+          foundDest = true;
+          return { ...ls, quantity: ls.quantity + transferData.quantity };
+        }
+        return ls;
+      });
+
+      if (!foundDest) {
+        updated.push({
+          id: `ls-${Date.now()}`,
+          productId: transferData.productId,
+          productName: transferData.productName,
+          sku: transferData.sku,
+          warehouseId: transferData.toWarehouseId || 'wh-main',
+          warehouseName: transferData.toWarehouseName || 'Main Warehouse',
+          locationId: transferData.toLocationId || `loc-${Date.now()}`,
+          locationName: toLoc,
+          quantity: transferData.quantity,
+          unit: 'kg',
+        });
+      }
+
+      return updated;
+    });
+
+    // Create 2 ledger records: TRANSFER_OUT (-qty) and TRANSFER_IN (+qty)
+    const ledgerOut: LedgerEntry = {
+      id: `led-${Date.now()}-out`,
       date: formattedDate,
       productId: transferData.productId,
       productName: transferData.productName,
       sku: transferData.sku,
       warehouseId: transferData.fromWarehouseId,
       warehouseName: transferData.fromWarehouseName,
+      locationName: fromLoc,
       transactionType: 'TRANSFER_OUT',
       quantity: -transferData.quantity,
       reference: transferNum,
       createdBy: transferData.createdBy || 'Admin',
+      notes: `Transfer out to ${toLoc}`,
     };
-    setLedger((prev) => [newLedgerOut, ...prev]);
 
+    const ledgerIn: LedgerEntry = {
+      id: `led-${Date.now()}-in`,
+      date: formattedDate,
+      productId: transferData.productId,
+      productName: transferData.productName,
+      sku: transferData.sku,
+      warehouseId: transferData.toWarehouseId,
+      warehouseName: transferData.toWarehouseName,
+      locationName: toLoc,
+      transactionType: 'TRANSFER_IN',
+      quantity: transferData.quantity,
+      reference: transferNum,
+      createdBy: transferData.createdBy || 'Admin',
+      notes: `Transfer in from ${fromLoc}`,
+    };
+
+    setLedger((prev) => [ledgerOut, ledgerIn, ...prev]);
+
+    transferApi.create(transferData).catch(() => {});
     return newTransfer;
   };
 
-  const validateTransferRpc = async (id: string) => {
-    try {
-      await transferService.validateTransfer(id);
-      setTransfers((prev) => prev.map((t) => (t.id === id ? { ...t, status: 'Completed' } : t)));
-    } catch (err: any) {
-      console.warn('validateTransferRpc error:', err.message || err);
-      setTransfers((prev) => prev.map((t) => (t.id === id ? { ...t, status: 'Completed' } : t)));
-    }
-  };
-
+  // 9. CREATE ADJUSTMENT
   const createAdjustment = (adjData: Omit<Adjustment, 'id' | 'adjustmentNumber'>): Adjustment => {
     const adjNum = `ADJ-${Math.floor(5000 + Math.random() * 5000)}`;
+    const now = new Date();
+    const formattedDate = `${now.toLocaleDateString('en-CA')} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
     const newAdjustment: Adjustment = {
       ...adjData,
@@ -411,10 +690,45 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
 
     setAdjustments((prev) => [newAdjustment, ...prev]);
-    adjustmentApi.create(adjData).catch((err) => console.warn('adjustmentApi.create sync:', err));
 
-    const now = new Date();
-    const formattedDate = `${now.toLocaleDateString('en-CA')} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    // 1. Update Product Current Stock by diff
+    let prevTotalStock = 0;
+    let newTotalStock = 0;
+
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id === adjData.productId || p.sku === adjData.sku) {
+          prevTotalStock = p.currentStock;
+          newTotalStock = Math.max(0, p.currentStock + adjData.difference);
+          return {
+            ...p,
+            currentStock: newTotalStock,
+            status: calculateStatus(newTotalStock, p.reorderLevel),
+            lastUpdated: formattedDate,
+          };
+        }
+        return p;
+      })
+    );
+
+    // 2. Update Location Stock
+    const targetLoc = adjData.locationName || 'Main Warehouse';
+    setLocationStocks((prev) =>
+      prev.map((ls) => {
+        if (
+          (ls.productId === adjData.productId || ls.sku === adjData.sku) &&
+          ls.locationName.toLowerCase() === targetLoc.toLowerCase()
+        ) {
+          return {
+            ...ls,
+            quantity: Math.max(0, ls.quantity + adjData.difference),
+          };
+        }
+        return ls;
+      })
+    );
+
+    // 3. Add to Ledger
     const newLedger: LedgerEntry = {
       id: `led-${Date.now()}`,
       date: formattedDate,
@@ -423,77 +737,73 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       sku: adjData.sku,
       warehouseId: adjData.warehouseId,
       warehouseName: adjData.warehouseName,
+      locationName: targetLoc,
       transactionType: 'ADJUSTMENT',
       quantity: adjData.difference,
       reference: adjNum,
       createdBy: adjData.createdBy || 'Admin',
+      previousStock: prevTotalStock,
+      newStock: newTotalStock,
+      notes: `Adjustment (${adjData.reason}): ${adjData.difference > 0 ? '+' : ''}${adjData.difference}`,
     };
     setLedger((prev) => [newLedger, ...prev]);
 
-    setProducts((prev) =>
-      prev.map((p) => {
-        if (p.id === adjData.productId) {
-          const newQty = adjData.countedQuantity;
-          return {
-            ...p,
-            currentStock: newQty,
-            status: calculateStatus(newQty, p.reorderLevel),
-            lastUpdated: formattedDate,
-          };
-        }
-        return p;
-      })
-    );
-
+    adjustmentApi.create(adjData).catch(() => {});
     return newAdjustment;
   };
 
-  const validateAdjustmentRpc = async (id: string) => {
-    try {
-      await adjustmentService.validateAdjustment(id);
-    } catch (err: any) {
-      console.warn('validateAdjustmentRpc error:', err.message || err);
-    }
-  };
-
-  const totalProductsCount = products.length;
+  // Dynamic KPIs
+  const totalProductsCount = products.filter((p) => p.currentStock > 0).length;
   const totalStockCount = products.reduce((sum, p) => sum + p.currentStock, 0);
-  const lowStockCount = products.filter((p) => p.status === 'Low Stock').length;
-  const outOfStockCount = products.filter((p) => p.status === 'Out of Stock').length;
+  const lowStockCount = products.filter((p) => p.currentStock <= p.reorderLevel && p.currentStock > 0).length;
+  const outOfStockCount = products.filter((p) => p.currentStock === 0).length;
   const totalStockValue = products.reduce((sum, p) => sum + p.currentStock * (p.sellingPrice || p.costPrice), 0);
+
+  const pendingReceiptsCount = receipts.filter((r) => r.status !== 'Confirmed' && r.status !== 'Cancelled').length;
+  const pendingDeliveriesCount = deliveries.filter((d) => d.status !== 'Validate').length;
+  const scheduledTransfersCount = transfers.filter((t) => t.status === 'Pending' || t.status === 'In Transit').length;
+
+  // Real-time Stock Summary for Graphs
+  const stockSummary: StockSummaryItem[] = products.map((p) => ({
+    product: p.name,
+    sku: p.sku,
+    quantity: p.currentStock,
+    category: p.category,
+    unit: p.unit,
+  }));
 
   return (
     <InventoryContext.Provider
       value={{
         products,
+        warehouses,
+        locations,
+        locationStocks,
         receipts,
         deliveries,
         transfers,
         adjustments,
         ledger,
-        warehouses,
-        loading,
-        error,
-        refreshData,
         addProduct,
         updateProduct,
         deleteProduct,
         getProductById,
+        getLocationStocksForProduct,
         createReceipt,
         updateReceiptStatus,
-        validateReceiptRpc,
         createDelivery,
         advanceDeliveryStatus,
-        validateDeliveryRpc,
         createTransfer,
-        validateTransferRpc,
         createAdjustment,
-        validateAdjustmentRpc,
         totalProductsCount,
         totalStockCount,
         lowStockCount,
         outOfStockCount,
         totalStockValue,
+        pendingReceiptsCount,
+        pendingDeliveriesCount,
+        scheduledTransfersCount,
+        stockSummary,
       }}
     >
       {children}

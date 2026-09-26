@@ -4,8 +4,8 @@ export interface Product {
   id: string;
   name: string;
   sku: string;
-  category: string;
-  unit: string;
+  category: 'Raw Materials' | 'Finished Goods' | string;
+  unit: 'kg' | 'units' | string;
   supplier: string;
   currentStock: number;
   reorderLevel: number;
@@ -18,6 +18,27 @@ export interface Product {
   lastUpdated: string;
 }
 
+export interface LocationItem {
+  id: string;
+  warehouseId: string;
+  warehouseName: string;
+  name: string;
+  type: 'Warehouse' | 'Production Floor' | 'Production Rack' | 'Rack' | 'Storage Area';
+}
+
+export interface LocationStock {
+  id: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  warehouseId: string;
+  warehouseName: string;
+  locationId: string;
+  locationName: string;
+  quantity: number;
+  unit: string;
+}
+
 export interface InventoryItem {
   id: string;
   productId: string;
@@ -26,6 +47,7 @@ export interface InventoryItem {
   category: string;
   warehouseId: string;
   warehouseName: string;
+  locationName?: string;
   currentStock: number;
   reorderLevel: number;
   status: ProductStatus;
@@ -50,6 +72,8 @@ export interface Receipt {
   supplier: string;
   warehouseId: string;
   warehouseName: string;
+  locationId?: string;
+  locationName?: string;
   receiptDate: string;
   productsCount: number;
   totalQuantity: number;
@@ -77,6 +101,8 @@ export interface Delivery {
   destination: string;
   warehouseId: string;
   warehouseName: string;
+  locationId?: string;
+  locationName?: string;
   orderDate: string;
   status: DeliveryStatus;
   productsCount: number;
@@ -94,8 +120,12 @@ export interface Transfer {
   transferNumber: string;
   fromWarehouseId: string;
   fromWarehouseName: string;
+  fromLocationId?: string;
+  fromLocationName?: string;
   toWarehouseId: string;
   toWarehouseName: string;
+  toLocationId?: string;
+  toLocationName?: string;
   productId: string;
   productName: string;
   sku: string;
@@ -116,6 +146,8 @@ export interface Adjustment {
   sku: string;
   warehouseId: string;
   warehouseName: string;
+  locationId?: string;
+  locationName?: string;
   systemQuantity: number;
   countedQuantity: number;
   difference: number;
@@ -125,7 +157,7 @@ export interface Adjustment {
   createdBy: string;
 }
 
-export type TransactionType = 'RECEIPT' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'DELIVERY' | 'ADJUSTMENT';
+export type TransactionType = 'INITIAL_STOCK' | 'RECEIPT' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'DELIVERY' | 'ADJUSTMENT';
 
 export interface LedgerEntry {
   id: string;
@@ -135,12 +167,14 @@ export interface LedgerEntry {
   sku: string;
   warehouseId: string;
   warehouseName: string;
+  locationName?: string;
   transactionType: TransactionType;
   quantity: number;
   reference: string;
   createdBy: string;
   previousStock?: number;
   newStock?: number;
+  notes?: string;
 }
 
 export interface Warehouse {

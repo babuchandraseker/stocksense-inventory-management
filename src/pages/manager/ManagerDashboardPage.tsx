@@ -8,21 +8,19 @@ import { useInventory } from '../../context/InventoryContext';
 import { useNavigate } from 'react-router-dom';
 import {
   Package,
-  Boxes,
   AlertTriangle,
-  Receipt,
-  CircleDollarSign,
-  Users,
-  TrendingUp,
+  Receipt as ReceiptIcon,
+  Truck,
+  ArrowRightLeft,
+  XCircle,
   BarChart3,
   PieChart as PieIcon,
   Plus,
   Clock,
   ChevronRight,
+  Warehouse,
 } from 'lucide-react';
 import {
-  AreaChart,
-  Area,
   BarChart,
   Bar,
   PieChart,
@@ -42,50 +40,72 @@ export const ManagerDashboardPage: React.FC = () => {
     products,
     receipts,
     ledger,
+    locationStocks,
     totalProductsCount,
-    totalStockCount,
     lowStockCount,
-    totalStockValue,
+    outOfStockCount,
+    pendingReceiptsCount,
+    pendingDeliveriesCount,
+    scheduledTransfersCount,
   } = useInventory();
 
-  const [timeframe, setTimeframe] = useState<'today' | 'week' | 'month'>('month');
+  const [graphMode, setGraphMode] = useState<'product' | 'location'>('product');
 
-  // Realistic trend chart data
-  const trendData = [
-    { name: 'Jan', stockIn: 450, stockOut: 320, balance: 1200 },
-    { name: 'Feb', stockIn: 580, stockOut: 410, balance: 1370 },
-    { name: 'Mar', stockIn: 490, stockOut: 380, balance: 1480 },
-    { name: 'Apr', stockIn: 720, stockOut: 520, balance: 1680 },
-    { name: 'May', stockIn: 890, stockOut: 640, balance: 1930 },
-    { name: 'Jun', stockIn: 780, stockOut: 600, balance: 2110 },
-    { name: 'Jul', stockIn: 950, stockOut: 710, balance: 2350 },
-    { name: 'Aug', stockIn: 880, stockOut: 690, balance: 2540 },
-    { name: 'Sep', stockIn: 1040, stockOut: 780, balance: 2800 },
-  ];
+  // Dynamic live stock data per product
+  const stockByProductData = products.map((p) => ({
+    name: p.name,
+    sku: p.sku,
+    quantity: p.currentStock,
+    reorderLevel: p.reorderLevel,
+    category: p.category,
+    unit: p.unit,
+  }));
 
-  // Stock movements breakdown data
-  const movementData = [
-    { name: 'Mon', Received: 120, Issued: 90, Adjusted: 5 },
-    { name: 'Tue', Received: 210, Issued: 140, Adjusted: -2 },
-    { name: 'Wed', Received: 180, Issued: 160, Adjusted: 8 },
-    { name: 'Thu', Received: 290, Issued: 195, Adjusted: -4 },
-    { name: 'Fri', Received: 240, Issued: 210, Adjusted: 3 },
-    { name: 'Sat', Received: 90, Issued: 60, Adjusted: 0 },
-  ];
+  // Dynamic stock breakdown by location
+  const stockByLocationData = React.useMemo(() => {
+    const locMap: Record<string, number> = {};
+    locationStocks.forEach((ls) => {
+      locMap[ls.locationName] = (locMap[ls.locationName] || 0) + ls.quantity;
+    });
 
-  // Category distribution data
-  const categoryData = [
-    { name: 'Electronics', value: 45, color: '#9A4C1C' }, // Brand caramel
-    { name: 'Accessories', value: 30, color: '#D97706' }, // Gold
-    { name: 'Furniture', value: 15, color: '#4E2C1D' },   // Warm brown
-    { name: 'Logistics', value: 10, color: '#E5982A' },   // Amber
-  ];
+    return Object.entries(locMap).map(([name, quantity]) => ({
+      name,
+      quantity,
+    }));
+  }, [locationStocks]);
 
+  // Dynamic category distribution
+  const categoryData = React.useMemo(() => {
+    const rawMaterialsStock = products
+      .filter((p) => p.category.toLowerCase().includes('raw'))
+      .reduce((sum, p) => sum + p.currentStock, 0);
+
+    const finishedGoodsStock = products
+      .filter((p) => p.category.toLowerCase().includes('finish'))
+      .reduce((sum, p) => sum + p.currentStock, 0);
+
+    const total = rawMaterialsStock + finishedGoodsStock || 1;
+
+    return [
+      {
+        name: 'Raw Materials',
+        value: Math.round((rawMaterialsStock / total) * 100),
+        units: rawMaterialsStock,
+        color: '#9A4C1C', // Caramel
+      },
+      {
+        name: 'Finished Goods',
+        value: Math.round((finishedGoodsStock / total) * 100),
+        units: finishedGoodsStock,
+        color: '#D97706', // Gold / Amber
+      },
+    ];
+  }, [products]);
+
+  // Low stock products
   const lowStockItems = products.filter(
-    (p) => p.status === 'Low Stock' || p.status === 'Out of Stock'
-  ).slice(0, 4);
-
-  const formattedStockValue = `₹${(totalStockValue / 100000).toFixed(1)}L`;
+    (p) => p.currentStock <= p.reorderLevel
+  );
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -94,21 +114,6 @@ export const ManagerDashboardPage: React.FC = () => {
         subtitle="Here's what's happening with your inventory today."
         actions={
           <div className="flex items-center gap-2.5">
-            <div className="flex items-center bg-brand-cream/80 p-1 rounded-xl border border-brand-border">
-              {(['today', 'week', 'month'] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTimeframe(t)}
-                  className={`
-                    px-3 py-1 text-xs font-semibold rounded-lg capitalize transition-all
-                    ${timeframe === t ? 'bg-white text-brand-textDark shadow-warm-sm' : 'text-brand-textMuted hover:text-brand-textDark'}
-                  `}
-                >
-                  {t === 'today' ? 'Today' : t === 'week' ? 'This Week' : 'This Month'}
-                </button>
-              ))}
-            </div>
-
             <Button
               variant="primary"
               size="sm"
@@ -121,107 +126,166 @@ export const ManagerDashboardPage: React.FC = () => {
         }
       />
 
-      {/* 6 KPI Cards */}
+      {/* 6 Required Dynamic KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {/* 1. Total Products in Stock */}
         <StatCard
-          title="Total Products"
+          title="Products in Stock"
           value={totalProductsCount}
-          change="+12%"
-          trend="up"
+          change={`${products.length} catalog`}
+          trend="neutral"
           icon={<Package className="w-5 h-5 text-brand-caramel" />}
           iconBgColor="bg-brand-caramelLight text-brand-caramel"
         />
-        <StatCard
-          title="Total Stock"
-          value={totalStockCount.toLocaleString()}
-          change="-8%"
-          trend="down"
-          icon={<Boxes className="w-5 h-5 text-emerald-700" />}
-          iconBgColor="bg-emerald-50 text-emerald-700"
-        />
+
+        {/* 2. Low Stock Items */}
         <StatCard
           title="Low Stock Items"
           value={lowStockCount}
-          change="-10%"
-          trend="down"
-          icon={<AlertTriangle className="w-5 h-5 text-rose-600" />}
+          change={lowStockCount > 0 ? "Requires reorder" : "Healthy"}
+          trend={lowStockCount > 0 ? "down" : "neutral"}
+          icon={<AlertTriangle className="w-5 h-5 text-amber-600" />}
+          iconBgColor="bg-amber-50 text-amber-600"
+        />
+
+        {/* 3. Out of Stock Items */}
+        <StatCard
+          title="Out of Stock"
+          value={outOfStockCount}
+          change={outOfStockCount === 0 ? "Zero stockouts" : "Action needed"}
+          trend={outOfStockCount > 0 ? "down" : "up"}
+          icon={<XCircle className="w-5 h-5 text-rose-600" />}
           iconBgColor="bg-rose-50 text-rose-600"
         />
+
+        {/* 4. Pending Receipts */}
         <StatCard
-          title="Today's Receipts"
-          value="23"
-          change="+5%"
-          trend="up"
-          icon={<Receipt className="w-5 h-5 text-amber-700" />}
-          iconBgColor="bg-amber-50 text-amber-700"
-        />
-        <StatCard
-          title="Stock Value"
-          value={formattedStockValue}
-          change="+12%"
-          trend="up"
-          icon={<CircleDollarSign className="w-5 h-5 text-brand-primary" />}
-          iconBgColor="bg-brand-cream text-brand-primary"
-        />
-        <StatCard
-          title="Active Staff"
-          value="6"
-          change="0%"
+          title="Pending Receipts"
+          value={pendingReceiptsCount}
+          change={`${receipts.length} total`}
           trend="neutral"
-          icon={<Users className="w-5 h-5 text-blue-700" />}
+          icon={<ReceiptIcon className="w-5 h-5 text-emerald-700" />}
+          iconBgColor="bg-emerald-50 text-emerald-700"
+        />
+
+        {/* 5. Pending Deliveries */}
+        <StatCard
+          title="Pending Deliveries"
+          value={pendingDeliveriesCount}
+          change="In fulfillment"
+          trend="neutral"
+          icon={<Truck className="w-5 h-5 text-blue-700" />}
           iconBgColor="bg-blue-50 text-blue-700"
+        />
+
+        {/* 6. Internal Transfers Scheduled */}
+        <StatCard
+          title="Transfers Scheduled"
+          value={scheduledTransfersCount}
+          change="Pending dispatch"
+          trend="neutral"
+          icon={<ArrowRightLeft className="w-5 h-5 text-purple-700" />}
+          iconBgColor="bg-purple-50 text-purple-700"
         />
       </div>
 
       {/* Analytics Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Inventory Trend Chart */}
+        {/* Main Stock Graph: Stock by Product */}
         <Card
           className="lg:col-span-2"
           header={
             <div className="flex items-center justify-between w-full">
               <div className="flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-brand-caramel" />
-                <h3 className="font-bold text-sm text-brand-textDark">Inventory Trend</h3>
+                <BarChart3 className="w-4 h-4 text-brand-caramel" />
+                <h3 className="font-bold text-sm text-brand-textDark">
+                  {graphMode === 'product' ? 'Stock by Product (Current Available Quantity)' : 'Stock Availability by Location'}
+                </h3>
               </div>
-              <Badge variant="success" size="sm">+14.2% Growth</Badge>
+              <div className="flex items-center gap-1 bg-brand-cream/80 p-1 rounded-lg border border-brand-border">
+                <button
+                  onClick={() => setGraphMode('product')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
+                    graphMode === 'product' ? 'bg-white text-brand-textDark shadow-warm-sm' : 'text-brand-textMuted hover:text-brand-textDark'
+                  }`}
+                >
+                  By Product
+                </button>
+                <button
+                  onClick={() => setGraphMode('location')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
+                    graphMode === 'location' ? 'bg-white text-brand-textDark shadow-warm-sm' : 'text-brand-textMuted hover:text-brand-textDark'
+                  }`}
+                >
+                  By Location
+                </button>
+              </div>
             </div>
           }
         >
-          <div className="h-64 w-full">
+          <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorStockIn" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#9A4C1C" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#9A4C1C" stopOpacity={0.0} />
-                  </linearGradient>
-                  <linearGradient id="colorStockOut" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#D97706" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#D97706" stopOpacity={0.0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E8DFD5" />
-                <XAxis dataKey="name" stroke="#8C7B70" fontSize={11} tickLine={false} />
-                <YAxis stroke="#8C7B70" fontSize={11} tickLine={false} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#FFFFFF',
-                    borderColor: '#E8DFD5',
-                    borderRadius: '12px',
-                    boxShadow: '0 4px 14px -2px rgba(43, 24, 16, 0.10)',
-                    fontSize: '12px',
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                <Area type="monotone" dataKey="stockIn" name="Inbound (Units)" stroke="#9A4C1C" strokeWidth={2.5} fillOpacity={1} fill="url(#colorStockIn)" />
-                <Area type="monotone" dataKey="stockOut" name="Outbound (Units)" stroke="#D97706" strokeWidth={2} fillOpacity={1} fill="url(#colorStockOut)" />
-              </AreaChart>
+              {graphMode === 'product' ? (
+                <BarChart
+                  data={stockByProductData}
+                  margin={{ top: 15, right: 15, left: -10, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E8DFD5" />
+                  <XAxis dataKey="name" stroke="#8C7B70" fontSize={11} tickLine={false} />
+                  <YAxis stroke="#8C7B70" fontSize={11} tickLine={false} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#FFFFFF',
+                      borderColor: '#E8DFD5',
+                      borderRadius: '12px',
+                      boxShadow: '0 4px 14px -2px rgba(43, 24, 16, 0.10)',
+                      fontSize: '12px',
+                    }}
+                    formatter={(val: any, _name: any, item: any) => [
+                      `${val} ${item.payload.unit || ''} (Min: ${item.payload.reorderLevel})`,
+                      'Available Stock',
+                    ]}
+                  />
+                  <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                  <Bar
+                    dataKey="quantity"
+                    name="Current Stock"
+                    fill="#9A4C1C"
+                    radius={[6, 6, 0, 0]}
+                  />
+                </BarChart>
+              ) : (
+                <BarChart
+                  data={stockByLocationData}
+                  margin={{ top: 15, right: 15, left: -10, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E8DFD5" />
+                  <XAxis dataKey="name" stroke="#8C7B70" fontSize={11} tickLine={false} />
+                  <YAxis stroke="#8C7B70" fontSize={11} tickLine={false} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#FFFFFF',
+                      borderColor: '#E8DFD5',
+                      borderRadius: '12px',
+                      boxShadow: '0 4px 14px -2px rgba(43, 24, 16, 0.10)',
+                      fontSize: '12px',
+                    }}
+                    formatter={(val: any) => [`${val} units/kg`, 'Location Total']}
+                  />
+                  <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                  <Bar
+                    dataKey="quantity"
+                    name="Total Quantity"
+                    fill="#D97706"
+                    radius={[6, 6, 0, 0]}
+                  />
+                </BarChart>
+              )}
             </ResponsiveContainer>
           </div>
         </Card>
 
-        {/* Category Distribution */}
+        {/* Dynamic Category Distribution */}
         <Card
           header={
             <div className="flex items-center justify-between w-full">
@@ -229,7 +293,7 @@ export const ManagerDashboardPage: React.FC = () => {
                 <PieIcon className="w-4 h-4 text-brand-caramel" />
                 <h3 className="font-bold text-sm text-brand-textDark">Category Distribution</h3>
               </div>
-              <span className="text-xs text-brand-textMuted font-medium">By Volume</span>
+              <span className="text-xs text-brand-textMuted font-medium">By Quantity</span>
             </div>
           }
         >
@@ -256,7 +320,10 @@ export const ManagerDashboardPage: React.FC = () => {
                     borderRadius: '12px',
                     fontSize: '12px',
                   }}
-                  formatter={(val: any) => [`${val}%`, 'Share']}
+                  formatter={(val: any, _name: any, item: any) => [
+                    `${val}% (${item.payload.units} total)`,
+                    'Share',
+                  ]}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -273,55 +340,84 @@ export const ManagerDashboardPage: React.FC = () => {
         </Card>
       </div>
 
-      {/* Stock Movements Bar Chart */}
+      {/* Stock Availability per Location Strip */}
       <Card
         header={
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-brand-caramel" />
-              <h3 className="font-bold text-sm text-brand-textDark">Stock Movements Breakdown</h3>
+              <Warehouse className="w-4 h-4 text-brand-caramel" />
+              <h3 className="font-bold text-sm text-brand-textDark">Stock Availability per Location</h3>
             </div>
-            <span className="text-xs text-brand-textMuted font-medium">Daily Inbound vs Outbound</span>
+            <button
+              onClick={() => navigate('/manager/inventory')}
+              className="text-xs text-brand-caramel font-bold hover:underline flex items-center gap-1"
+            >
+              <span>View Full Inventory</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
           </div>
         }
       >
-        <div className="h-56 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={movementData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E8DFD5" />
-              <XAxis dataKey="name" stroke="#8C7B70" fontSize={11} tickLine={false} />
-              <YAxis stroke="#8C7B70" fontSize={11} tickLine={false} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#FFFFFF',
-                  borderColor: '#E8DFD5',
-                  borderRadius: '12px',
-                  fontSize: '12px',
-                }}
-              />
-              <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-              <Bar dataKey="Received" fill="#9A4C1C" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Issued" fill="#D97706" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {products.map((prod) => {
+            const locList = locationStocks.filter((ls) => ls.productId === prod.id);
+            const sumLocationStock = locList.reduce((sum, ls) => sum + ls.quantity, 0);
+
+            return (
+              <div
+                key={prod.id}
+                className="bg-brand-cream/40 p-4 rounded-xl border border-brand-border/60 hover:border-brand-caramel/40 transition-colors"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-brand-textDark">{prod.name}</h4>
+                    <p className="text-[11px] text-brand-textMuted">{prod.sku} • {prod.category}</p>
+                  </div>
+                  <Badge variant={prod.status === 'In Stock' ? 'success' : prod.status === 'Low Stock' ? 'warning' : 'danger'} size="sm">
+                    {prod.currentStock} {prod.unit}
+                  </Badge>
+                </div>
+
+                <div className="mt-3 space-y-1.5 border-t border-brand-border/40 pt-2 text-xs">
+                  {locList.length === 0 ? (
+                    <div className="flex justify-between text-brand-textMuted text-[11px]">
+                      <span>Main Warehouse</span>
+                      <span>{prod.currentStock} {prod.unit}</span>
+                    </div>
+                  ) : (
+                    locList.map((ls) => (
+                      <div key={ls.id} className="flex justify-between text-[11px] text-brand-textMuted">
+                        <span className="truncate pr-2">{ls.locationName}</span>
+                        <span className="font-semibold text-brand-textDark shrink-0">{ls.quantity} {ls.unit}</span>
+                      </div>
+                    ))
+                  )}
+                  <div className="flex justify-between pt-1 border-t border-dashed border-brand-border text-[11px] font-bold text-brand-primary">
+                    <span>Total Calculated</span>
+                    <span>{sumLocationStock || prod.currentStock} {prod.unit}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </Card>
 
-      {/* Bottom Grid: Low Stock Products, Recent Receipts, Recent Activity */}
+      {/* Bottom Grid: Low Stock Alerts, Recent Inbound/Outbound, Recent Ledger Feed */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Low Stock Products */}
+        {/* Low Stock Alerts */}
         <Card
           header={
             <div className="flex items-center justify-between w-full">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-rose-600" />
-                <h3 className="font-bold text-sm text-brand-textDark">Low Stock Alerts</h3>
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                <h3 className="font-bold text-sm text-brand-textDark">Stock Alerts & Reorder Points</h3>
               </div>
               <button
                 onClick={() => navigate('/manager/inventory')}
                 className="text-xs text-brand-caramel font-bold hover:underline flex items-center gap-1"
               >
-                <span>View All</span>
+                <span>View Inventory</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -330,7 +426,9 @@ export const ManagerDashboardPage: React.FC = () => {
         >
           <div className="divide-y divide-brand-border/60">
             {lowStockItems.length === 0 ? (
-              <p className="p-4 text-xs text-brand-textMuted text-center">No low stock items</p>
+              <p className="p-4 text-xs text-emerald-700 bg-emerald-50/50 text-center font-medium">
+                ✓ All items are above reorder thresholds
+              </p>
             ) : (
               lowStockItems.map((p) => (
                 <div key={p.id} className="p-3.5 flex items-center justify-between hover:bg-brand-cream/30 transition-colors">
@@ -345,10 +443,10 @@ export const ManagerDashboardPage: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-2.5 shrink-0">
                     <div className="text-right">
-                      <p className="text-xs font-bold text-brand-textDark">{p.currentStock} left</p>
-                      <p className="text-[10px] text-brand-textMuted">Min: {p.reorderLevel}</p>
+                      <p className="text-xs font-bold text-brand-textDark">{p.currentStock} {p.unit}</p>
+                      <p className="text-[10px] text-brand-textMuted">Reorder: {p.reorderLevel}</p>
                     </div>
-                    {p.status === 'Out of Stock' ? (
+                    {p.currentStock === 0 ? (
                       <Badge variant="danger" size="sm" dot>Out</Badge>
                     ) : (
                       <Badge variant="warning" size="sm" dot>Low</Badge>
@@ -360,19 +458,19 @@ export const ManagerDashboardPage: React.FC = () => {
           </div>
         </Card>
 
-        {/* Recent Receipts */}
+        {/* Recent Consignment Receipts */}
         <Card
           header={
             <div className="flex items-center justify-between w-full">
               <div className="flex items-center gap-2">
-                <Receipt className="w-4 h-4 text-emerald-700" />
-                <h3 className="font-bold text-sm text-brand-textDark">Recent Receipts</h3>
+                <ReceiptIcon className="w-4 h-4 text-emerald-700" />
+                <h3 className="font-bold text-sm text-brand-textDark">Incoming Consignments</h3>
               </div>
               <button
                 onClick={() => navigate('/manager/receipts')}
                 className="text-xs text-brand-caramel font-bold hover:underline flex items-center gap-1"
               >
-                <span>View All</span>
+                <span>Receipts</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -384,12 +482,11 @@ export const ManagerDashboardPage: React.FC = () => {
               <div key={r.id} className="p-3.5 flex items-center justify-between hover:bg-brand-cream/30 transition-colors">
                 <div className="truncate">
                   <h4 className="text-xs font-bold text-brand-textDark">{r.receiptNumber}</h4>
-                  <p className="text-[11px] text-brand-textMuted truncate">{r.supplier}</p>
+                  <p className="text-[11px] text-brand-textMuted truncate">{r.supplier} • {r.items[0]?.productName || 'Items'}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-[11px] text-brand-textMuted">{r.receiptDate}</span>
                   <Badge variant={r.status === 'Confirmed' ? 'success' : r.status === 'Waiting' ? 'warning' : 'neutral'} size="sm">
-                    {r.totalQuantity} Units
+                    {r.totalQuantity} {r.items[0]?.unit || 'Units'}
                   </Badge>
                 </div>
               </div>
@@ -397,19 +494,19 @@ export const ManagerDashboardPage: React.FC = () => {
           </div>
         </Card>
 
-        {/* Recent Activity Feed */}
+        {/* Real Stock Ledger Feed */}
         <Card
           header={
             <div className="flex items-center justify-between w-full">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-brand-caramel" />
-                <h3 className="font-bold text-sm text-brand-textDark">Recent Activity</h3>
+                <h3 className="font-bold text-sm text-brand-textDark">Stock Ledger Trail</h3>
               </div>
               <button
                 onClick={() => navigate('/manager/ledger')}
                 className="text-xs text-brand-caramel font-bold hover:underline flex items-center gap-1"
               >
-                <span>Audit Log</span>
+                <span>Full Ledger</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -417,18 +514,20 @@ export const ManagerDashboardPage: React.FC = () => {
           padded={false}
         >
           <div className="divide-y divide-brand-border/60">
-            {ledger.slice(0, 4).map((entry) => (
-              <div key={entry.id} className="p-3.5 flex items-center justify-between hover:bg-brand-cream/30 transition-colors">
+            {ledger.slice(0, 5).map((entry) => (
+              <div key={entry.id} className="p-3 flex items-center justify-between hover:bg-brand-cream/30 transition-colors">
                 <div className="truncate">
                   <h4 className="text-xs font-bold text-brand-textDark truncate">
                     {entry.transactionType}: {entry.productName}
                   </h4>
-                  <p className="text-[11px] text-brand-textMuted">Ref: {entry.reference}</p>
+                  <p className="text-[11px] text-brand-textMuted">
+                    {entry.locationName || entry.warehouseName} • Ref: {entry.reference}
+                  </p>
                 </div>
                 <div className="text-right shrink-0">
                   <span
                     className={`text-xs font-bold ${
-                      entry.quantity > 0 ? 'text-emerald-700' : 'text-rose-700'
+                      entry.quantity > 0 ? 'text-emerald-700' : entry.quantity < 0 ? 'text-rose-700' : 'text-brand-textMuted'
                     }`}
                   >
                     {entry.quantity > 0 ? `+${entry.quantity}` : entry.quantity}

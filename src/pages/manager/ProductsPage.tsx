@@ -42,14 +42,14 @@ export const ProductsPage: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '',
     sku: '',
-    category: 'Electronics',
-    unit: 'Units',
-    supplier: 'ABC Electronics',
-    reorderLevel: 10,
+    category: 'Raw Materials',
+    unit: 'kg',
+    supplier: 'ABC Steel Supplier',
+    reorderLevel: 50,
     currentStock: 0,
     warehouseId: 'wh-main',
-    costPrice: 0,
-    sellingPrice: 0,
+    costPrice: 50,
+    sellingPrice: 75,
     description: '',
   });
 
@@ -110,15 +110,15 @@ export const ProductsPage: React.FC = () => {
   const handleOpenAdd = () => {
     setFormData({
       name: '',
-      sku: `SKU-${Math.floor(1000 + Math.random() * 9000)}`,
-      category: 'Electronics',
-      unit: 'Units',
-      supplier: 'ABC Electronics',
-      reorderLevel: 10,
-      currentStock: 15,
+      sku: `STL-${Math.floor(100 + Math.random() * 900)}`,
+      category: 'Raw Materials',
+      unit: 'kg',
+      supplier: 'ABC Steel Supplier',
+      reorderLevel: 50,
+      currentStock: 100,
       warehouseId: 'wh-main',
-      costPrice: 500,
-      sellingPrice: 999,
+      costPrice: 50,
+      sellingPrice: 75,
       description: '',
     });
     setFormErrors({});
@@ -412,14 +412,14 @@ export const ProductsPage: React.FC = () => {
               label="Product Name *"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g. iPhone 15 Pro Max"
+              placeholder="e.g. Steel Rods"
               error={formErrors.name}
             />
             <Input
               label="SKU Code *"
               value={formData.sku}
               onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-              placeholder="e.g. IP15-PRO-256"
+              placeholder="e.g. STL-ROD-002"
               error={formErrors.sku}
             />
           </div>
@@ -430,10 +430,8 @@ export const ProductsPage: React.FC = () => {
               value={formData.category}
               onChange={(e) => setFormData({ ...formData, category: e.target.value })}
               options={[
-                { value: 'Electronics', label: 'Electronics' },
-                { value: 'Accessories', label: 'Accessories' },
-                { value: 'Furniture', label: 'Furniture' },
-                { value: 'Logistics', label: 'Logistics' },
+                { value: 'Raw Materials', label: 'Raw Materials' },
+                { value: 'Finished Goods', label: 'Finished Goods' },
               ]}
               error={formErrors.category}
             />
@@ -441,17 +439,16 @@ export const ProductsPage: React.FC = () => {
               label="Unit *"
               value={formData.unit}
               onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-              placeholder="Units, Boxes, Kg"
+              placeholder="kg, units, pcs"
             />
             <Select
               label="Supplier *"
               value={formData.supplier}
               onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
               options={[
-                { value: 'ABC Electronics', label: 'ABC Electronics' },
-                { value: 'TechMart', label: 'TechMart' },
-                { value: 'Global Traders', label: 'Global Traders' },
-                { value: 'FurniCo', label: 'FurniCo' },
+                { value: 'ABC Steel Supplier', label: 'ABC Steel Supplier' },
+                { value: 'National Steel Corp', label: 'National Steel Corp' },
+                { value: 'Apex Manufacturing', label: 'Apex Manufacturing' },
               ]}
               error={formErrors.supplier}
             />
@@ -552,10 +549,8 @@ export const ProductsPage: React.FC = () => {
               value={formData.category}
               onChange={(e) => setFormData({ ...formData, category: e.target.value })}
               options={[
-                { value: 'Electronics', label: 'Electronics' },
-                { value: 'Accessories', label: 'Accessories' },
-                { value: 'Furniture', label: 'Furniture' },
-                { value: 'Logistics', label: 'Logistics' },
+                { value: 'Raw Materials', label: 'Raw Materials' },
+                { value: 'Finished Goods', label: 'Finished Goods' },
               ]}
               error={formErrors.category}
             />
@@ -569,10 +564,9 @@ export const ProductsPage: React.FC = () => {
               value={formData.supplier}
               onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
               options={[
-                { value: 'ABC Electronics', label: 'ABC Electronics' },
-                { value: 'TechMart', label: 'TechMart' },
-                { value: 'Global Traders', label: 'Global Traders' },
-                { value: 'FurniCo', label: 'FurniCo' },
+                { value: 'ABC Steel Supplier', label: 'ABC Steel Supplier' },
+                { value: 'National Steel Corp', label: 'National Steel Corp' },
+                { value: 'Apex Manufacturing', label: 'Apex Manufacturing' },
               ]}
             />
           </div>

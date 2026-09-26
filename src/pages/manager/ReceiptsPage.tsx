@@ -36,23 +36,23 @@ export const ReceiptsPage: React.FC = () => {
   const [activeReceipt, setActiveReceipt] = useState<Receipt | null>(null);
 
   // Create Form State
-  const [supplier, setSupplier] = useState('ABC Electronics');
+  const [supplier, setSupplier] = useState('ABC Steel Supplier');
   const [warehouseId, setWarehouseId] = useState('wh-main');
   const [receiptDate, setReceiptDate] = useState(new Date().toLocaleDateString('en-CA'));
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<ReceiptItem[]>([
     {
       productId: products[0]?.id || 'prod-01',
-      productName: products[0]?.name || 'iPhone 15',
-      sku: products[0]?.sku || 'IP15-128',
-      quantity: 10,
-      unit: 'Units',
-      unitPrice: 65000,
-      totalPrice: 650000,
+      productName: products[0]?.name || 'Steel Rods',
+      sku: products[0]?.sku || 'STL-ROD-001',
+      quantity: 100,
+      unit: 'kg',
+      unitPrice: 45,
+      totalPrice: 4500,
     },
   ]);
 
-  const suppliersList = ['ABC Electronics', 'TechMart', 'Global Traders', 'FurniCo'];
+  const suppliersList = ['ABC Steel Supplier', 'National Steel Corp', 'Apex Manufacturing'];
 
   // Line Item Management
   const handleAddItem = () => {
@@ -290,12 +290,12 @@ export const ReceiptsPage: React.FC = () => {
               setItems([
                 {
                   productId: products[0]?.id || 'prod-01',
-                  productName: products[0]?.name || 'iPhone 15',
-                  sku: products[0]?.sku || 'IP15-128',
-                  quantity: 10,
-                  unit: 'Units',
-                  unitPrice: 65000,
-                  totalPrice: 650000,
+                  productName: products[0]?.name || 'Steel Rods',
+                  sku: products[0]?.sku || 'STL-ROD-001',
+                  quantity: 100,
+                  unit: 'kg',
+                  unitPrice: 45,
+                  totalPrice: 4500,
                 },
               ]);
               setIsCreateModalOpen(true);

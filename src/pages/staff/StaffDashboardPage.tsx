@@ -70,7 +70,7 @@ export const StaffDashboardPage: React.FC = () => {
         />
         <StatCard
           title="Today's Receipts"
-          value={receipts.filter((r) => r.status === 'Confirmed').length || 23}
+          value={receipts.filter((r) => r.status === 'Confirmed').length}
           change="Completed"
           trend="up"
           icon={<Receipt className="w-5 h-5 text-amber-700" />}
@@ -78,7 +78,7 @@ export const StaffDashboardPage: React.FC = () => {
         />
         <StatCard
           title="Today's Activities"
-          value={ledger.length || 18}
+          value={ledger.length}
           change="Logged"
           trend="neutral"
           icon={<Activity className="w-5 h-5 text-brand-caramel" />}

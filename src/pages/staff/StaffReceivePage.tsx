@@ -19,10 +19,10 @@ export const StaffReceivePage: React.FC = () => {
   const { products, warehouses, createReceipt, receipts } = useInventory();
   const { showToast } = useToast();
 
-  const suppliersList = ['ABC Electronics', 'TechMart', 'Global Traders', 'FurniCo'];
+  const suppliersList = ['ABC Steel Supplier', 'National Steel Corp', 'Apex Manufacturing'];
 
   // Form State
-  const [supplier, setSupplier] = useState('ABC Electronics');
+  const [supplier, setSupplier] = useState('ABC Steel Supplier');
   const [warehouseId, setWarehouseId] = useState('wh-main');
   const [productId, setProductId] = useState(products[0]?.id || '');
   const [quantity, setQuantity] = useState<number>(10);

@@ -7,20 +7,25 @@ import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
 import { Input } from '../../components/common/Input';
 import { Select } from '../../components/common/Select';
+import { Card } from '../../components/common/Card';
 import { useInventory } from '../../context/InventoryContext';
 import { useToast } from '../../context/ToastContext';
-import { Product, ProductStatus, AdjustmentReason } from '../../types/inventory';
+import { Product, ProductStatus, AdjustmentReason, LocationStock } from '../../types/inventory';
 import {
   Sliders,
   Package,
   Building2,
   Calendar,
+  Layers,
+  MapPin,
+  CheckCircle2,
 } from 'lucide-react';
 
 export const InventoryPage: React.FC = () => {
-  const { products, warehouses, createAdjustment } = useInventory();
+  const { products, warehouses, locationStocks, locations, createAdjustment } = useInventory();
   const { showToast } = useToast();
 
+  const [activeTab, setActiveTab] = useState<'products' | 'locations'>('products');
   const [searchValue, setSearchValue] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedWarehouse, setSelectedWarehouse] = useState('all');
@@ -31,6 +36,7 @@ export const InventoryPage: React.FC = () => {
   // Adjustment Modal State
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
   const [activeProduct, setActiveProduct] = useState<Product | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<string>('Main Warehouse');
   const [countedQty, setCountedQty] = useState<number>(0);
   const [adjustReason, setAdjustReason] = useState<AdjustmentReason>('Counting Error');
   const [adjustNotes, setAdjustNotes] = useState('');
@@ -66,8 +72,24 @@ export const InventoryPage: React.FC = () => {
     return filteredInventory.slice(start, start + pageSize);
   }, [filteredInventory, currentPage, pageSize]);
 
-  const handleOpenAdjust = (prod: Product) => {
+  // Filtered Location Stocks
+  const filteredLocationStocks = useMemo(() => {
+    return locationStocks.filter((ls) => {
+      const matchesSearch =
+        ls.productName.toLowerCase().includes(searchValue.toLowerCase()) ||
+        ls.sku.toLowerCase().includes(searchValue.toLowerCase()) ||
+        ls.locationName.toLowerCase().includes(searchValue.toLowerCase());
+
+      const matchesWarehouse =
+        selectedWarehouse === 'all' || ls.warehouseId === selectedWarehouse;
+
+      return matchesSearch && matchesWarehouse;
+    });
+  }, [locationStocks, searchValue, selectedWarehouse]);
+
+  const handleOpenAdjust = (prod: Product, defaultLocation?: string) => {
     setActiveProduct(prod);
+    setSelectedLocation(defaultLocation || 'Main Warehouse');
     setCountedQty(prod.currentStock);
     setAdjustReason('Counting Error');
     setAdjustNotes('');
@@ -86,6 +108,7 @@ export const InventoryPage: React.FC = () => {
       sku: activeProduct.sku,
       warehouseId: activeProduct.warehouseId,
       warehouseName: activeProduct.warehouseName,
+      locationName: selectedLocation,
       systemQuantity: activeProduct.currentStock,
       countedQuantity: countedQty,
       difference: diff,
@@ -98,7 +121,7 @@ export const InventoryPage: React.FC = () => {
     showToast({
       type: 'success',
       title: 'Stock adjustment applied',
-      message: `${activeProduct.name} stock adjusted to ${countedQty} units (${diff >= 0 ? `+${diff}` : diff}).`,
+      message: `${activeProduct.name} stock adjusted to ${countedQty} ${activeProduct.unit} (${diff >= 0 ? `+${diff}` : diff}).`,
     });
 
     setIsAdjustModalOpen(false);
@@ -117,7 +140,7 @@ export const InventoryPage: React.FC = () => {
   const columns: Column<Product>[] = [
     {
       key: 'name',
-      header: 'Product',
+      header: 'Product & SKU',
       render: (item) => (
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-brand-caramelLight/70 flex items-center justify-center text-brand-caramel shrink-0">
@@ -141,36 +164,44 @@ export const InventoryPage: React.FC = () => {
       ),
     },
     {
+      key: 'category',
+      header: 'Category',
+      render: (item) => (
+        <Badge variant="neutral" size="sm">
+          {item.category}
+        </Badge>
+      ),
+    },
+    {
       key: 'currentStock',
       header: 'Current Stock',
-      align: 'center',
       render: (item) => (
         <div>
-          <span className="font-bold text-brand-textDark text-sm">{item.currentStock}</span>
-          <span className="text-[11px] text-brand-textMuted ml-1">{item.unit}</span>
+          <span className="font-extrabold text-brand-textDark text-sm">{item.currentStock}</span>
+          <span className="text-xs text-brand-textMuted ml-1">{item.unit}</span>
         </div>
       ),
     },
     {
       key: 'reorderLevel',
       header: 'Reorder Level',
-      align: 'center',
       render: (item) => (
-        <span className="text-xs text-brand-textMuted font-semibold">{item.reorderLevel}</span>
+        <span className="text-xs font-semibold text-brand-textMuted">
+          {item.reorderLevel} {item.unit}
+        </span>
       ),
     },
     {
       key: 'status',
       header: 'Status',
-      align: 'center',
       render: (item) => getStatusBadge(item.status),
     },
     {
       key: 'lastUpdated',
       header: 'Last Updated',
       render: (item) => (
-        <div className="flex items-center gap-1 text-xs text-brand-textMuted">
-          <Calendar className="w-3.5 h-3.5 text-brand-textLight" />
+        <div className="flex items-center gap-1.5 text-xs text-brand-textMuted">
+          <Calendar className="w-3.5 h-3.5" />
           <span>{item.lastUpdated}</span>
         </div>
       ),
@@ -178,17 +209,55 @@ export const InventoryPage: React.FC = () => {
     {
       key: 'actions',
       header: 'Actions',
-      align: 'right',
       render: (item) => (
         <Button
           variant="outline"
           size="sm"
+          leftIcon={<Sliders className="w-3.5 h-3.5" />}
           onClick={() => handleOpenAdjust(item)}
-          leftIcon={<Sliders className="w-3.5 h-3.5 text-brand-caramel" />}
-          className="text-xs py-1 px-2.5"
         >
-          Adjust Stock
+          Adjust
         </Button>
+      ),
+    },
+  ];
+
+  const locationColumns: Column<LocationStock>[] = [
+    {
+      key: 'productName',
+      header: 'Product',
+      render: (item) => (
+        <div>
+          <p className="font-bold text-brand-textDark text-xs">{item.productName}</p>
+          <p className="text-[11px] text-brand-textMuted">{item.sku}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'locationName',
+      header: 'Storage Location',
+      render: (item) => (
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-brand-primary">
+          <MapPin className="w-3.5 h-3.5 text-brand-caramel" />
+          <span>{item.locationName}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'warehouseName',
+      header: 'Warehouse',
+      render: (item) => (
+        <span className="text-xs text-brand-textDark">{item.warehouseName}</span>
+      ),
+    },
+    {
+      key: 'quantity',
+      header: 'Available Quantity',
+      render: (item) => (
+        <Badge variant="neutral" size="md">
+          <span className="font-bold text-brand-textDark">{item.quantity}</span>
+          <span className="text-[11px] text-brand-textMuted ml-1">{item.unit}</span>
+        </Badge>
       ),
     },
   ];
@@ -196,74 +265,134 @@ export const InventoryPage: React.FC = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       <PageHeader
-        title="Inventory Overview"
-        subtitle="Real-time multi-location stock levels, reorder thresholds, and bin allocations."
+        title="Stock Availability & Inventory"
+        subtitle="Real-time multi-location inventory levels, reorder thresholds, and physical stock tracking."
+        actions={
+          <div className="flex items-center bg-brand-cream p-1 rounded-xl border border-brand-border">
+            <button
+              onClick={() => setActiveTab('products')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                activeTab === 'products'
+                  ? 'bg-white text-brand-textDark shadow-warm-sm'
+                  : 'text-brand-textMuted hover:text-brand-textDark'
+              }`}
+            >
+              <Package className="w-3.5 h-3.5" />
+              <span>Products View</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('locations')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                activeTab === 'locations'
+                  ? 'bg-white text-brand-textDark shadow-warm-sm'
+                  : 'text-brand-textMuted hover:text-brand-textDark'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Location Breakdown</span>
+            </button>
+          </div>
+        }
       />
 
-      {/* Summary KPI Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-2xl border border-brand-border shadow-warm">
-          <p className="text-xs text-brand-textMuted font-semibold">Total Stocked Items</p>
-          <p className="text-2xl font-extrabold text-brand-textDark mt-1">{products.length} SKUs</p>
-        </div>
-        <div className="bg-white p-4 rounded-2xl border border-brand-border shadow-warm">
-          <p className="text-xs text-brand-textMuted font-semibold">Available Units</p>
-          <p className="text-2xl font-extrabold text-emerald-700 mt-1">
-            {products.reduce((acc, p) => acc + p.currentStock, 0).toLocaleString()}
-          </p>
-        </div>
-        <div className="bg-white p-4 rounded-2xl border border-brand-border shadow-warm">
-          <p className="text-xs text-brand-textMuted font-semibold">Low Stock SKUs</p>
-          <p className="text-2xl font-extrabold text-amber-600 mt-1">
-            {products.filter((p) => p.status === 'Low Stock').length}
-          </p>
-        </div>
-        <div className="bg-white p-4 rounded-2xl border border-brand-border shadow-warm">
-          <p className="text-xs text-brand-textMuted font-semibold">Out of Stock</p>
-          <p className="text-2xl font-extrabold text-rose-600 mt-1">
-            {products.filter((p) => p.status === 'Out of Stock').length}
-          </p>
-        </div>
-      </div>
+      {/* Location Stock Matrix Cards */}
+      <Card
+        header={
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2">
+              <Layers className="w-4 h-4 text-brand-caramel" />
+              <h3 className="font-bold text-sm text-brand-textDark">Stock Availability per Location Breakdown</h3>
+            </div>
+            <span className="text-xs text-emerald-700 font-semibold flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              Sum of locations = Total Stock
+            </span>
+          </div>
+        }
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {products.map((prod) => {
+            const locList = locationStocks.filter((ls) => ls.productId === prod.id);
+            const totalLocStock = locList.reduce((sum, ls) => sum + ls.quantity, 0);
 
-      {/* Filters */}
+            return (
+              <div
+                key={prod.id}
+                className="bg-brand-cream/30 p-4 rounded-xl border border-brand-border/70 hover:border-brand-caramel/50 transition-all shadow-warm-sm"
+              >
+                <div className="flex items-start justify-between pb-2 border-b border-brand-border/50">
+                  <div>
+                    <h4 className="text-xs font-bold text-brand-textDark">{prod.name}</h4>
+                    <p className="text-[11px] text-brand-textMuted">{prod.sku} • {prod.category}</p>
+                  </div>
+                  <Badge variant={prod.status === 'In Stock' ? 'success' : prod.status === 'Low Stock' ? 'warning' : 'danger'} size="sm">
+                    {prod.currentStock} {prod.unit}
+                  </Badge>
+                </div>
+
+                <div className="mt-3 space-y-1.5 text-xs">
+                  {locList.map((ls) => (
+                    <div key={ls.id} className="flex justify-between items-center text-[11px] py-0.5">
+                      <span className="text-brand-textMuted flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-brand-caramel" />
+                        {ls.locationName}
+                      </span>
+                      <span className="font-bold text-brand-textDark">{ls.quantity} {ls.unit}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between pt-2 border-t border-dashed border-brand-border text-xs font-extrabold text-brand-primary">
+                    <span>Total Sum</span>
+                    <span>{totalLocStock} {prod.unit}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* Filter Bar */}
       <FilterBar
         searchValue={searchValue}
         onSearchChange={setSearchValue}
-        searchPlaceholder="Filter inventory by product name or SKU..."
+        searchPlaceholder="Search by product name, SKU, or storage location..."
         filters={[
           {
-            id: 'warehouse',
-            value: selectedWarehouse,
-            onChange: setSelectedWarehouse,
-            placeholder: 'All Warehouses',
-            options: [
-              { value: 'all', label: 'All Warehouses' },
-              ...warehouses.map((w) => ({ value: w.id, label: w.name })),
-            ],
-          },
-          {
             id: 'category',
+            label: 'Category',
             value: selectedCategory,
             onChange: setSelectedCategory,
-            placeholder: 'All Categories',
             options: [
-              { value: 'all', label: 'All Categories' },
-              ...categories.map((c) => ({ value: c, label: c })),
+              { label: 'All Categories', value: 'all' },
+              ...categories.map((c) => ({ label: c, value: c })),
             ],
           },
           {
-            id: 'status',
-            value: selectedStatus,
-            onChange: setSelectedStatus,
-            placeholder: 'All Statuses',
+            id: 'warehouse',
+            label: 'Warehouse',
+            value: selectedWarehouse,
+            onChange: setSelectedWarehouse,
             options: [
-              { value: 'all', label: 'All Statuses' },
-              { value: 'In Stock', label: 'In Stock' },
-              { value: 'Low Stock', label: 'Low Stock' },
-              { value: 'Out of Stock', label: 'Out of Stock' },
+              { label: 'All Warehouses', value: 'all' },
+              ...warehouses.map((w) => ({ label: w.name, value: w.id })),
             ],
           },
+          ...(activeTab === 'products'
+            ? [
+                {
+                  id: 'status',
+                  label: 'Status',
+                  value: selectedStatus,
+                  onChange: setSelectedStatus,
+                  options: [
+                    { label: 'All Statuses', value: 'all' },
+                    { label: 'In Stock', value: 'In Stock' },
+                    { label: 'Low Stock', value: 'Low Stock' },
+                    { label: 'Out of Stock', value: 'Out of Stock' },
+                  ],
+                },
+              ]
+            : []),
         ]}
         onResetFilters={() => {
           setSearchValue('');
@@ -273,62 +402,104 @@ export const InventoryPage: React.FC = () => {
         }}
       />
 
-      {/* Inventory Table */}
-      <DataTable
-        columns={columns}
-        data={paginatedData}
-        keyExtractor={(item) => item.id}
-        pagination={{
-          currentPage,
-          totalPages,
-          totalItems: filteredInventory.length,
-          pageSize,
-          onPageChange: setCurrentPage,
-        }}
-      />
+      {/* Main Data Table */}
+      {activeTab === 'products' ? (
+        <DataTable
+          columns={columns}
+          data={paginatedData}
+          keyExtractor={(item) => item.id}
+          pagination={{
+            currentPage,
+            totalPages,
+            onPageChange: setCurrentPage,
+            totalItems: filteredInventory.length,
+            pageSize,
+          }}
+          emptyMessage="No inventory records found. Try adjusting your filters."
+        />
+      ) : (
+        <DataTable
+          columns={locationColumns}
+          data={filteredLocationStocks}
+          keyExtractor={(item) => item.id}
+          emptyMessage="No location stock records found. Try adjusting your search."
+        />
+      )}
 
-      {/* QUICK STOCK ADJUSTMENT MODAL */}
+      {/* Quick Adjust Modal */}
       <Modal
         isOpen={isAdjustModalOpen}
         onClose={() => setIsAdjustModalOpen(false)}
-        title={`Adjust Stock: ${activeProduct?.name}`}
-        description="Record physical count discrepancies, damages, or shrinkage adjustments."
+        title={`Adjust Stock — ${activeProduct?.name || ''}`}
+        maxWidth="md"
+        footer={
+          <div className="flex items-center justify-end gap-3 w-full">
+            <Button
+              variant="outline"
+              size="md"
+              onClick={() => setIsAdjustModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              onClick={handleSaveAdjustment}
+            >
+              Save Adjustment
+            </Button>
+          </div>
+        }
       >
         {activeProduct && (
           <form onSubmit={handleSaveAdjustment} className="space-y-4">
-            <div className="p-3 bg-brand-cream/60 rounded-xl border border-brand-border text-xs flex justify-between">
-              <div>
-                <span className="text-brand-textMuted block">Current System Quantity:</span>
-                <span className="font-bold text-base text-brand-textDark">{activeProduct.currentStock} {activeProduct.unit}</span>
+            <div className="p-3 bg-brand-cream/50 rounded-xl border border-brand-border space-y-1">
+              <div className="flex justify-between text-xs font-semibold text-brand-textDark">
+                <span>SKU Code:</span>
+                <span className="text-brand-caramel font-mono">{activeProduct.sku}</span>
               </div>
-              <div className="text-right">
-                <span className="text-brand-textMuted block">Warehouse:</span>
-                <span className="font-semibold text-brand-textDark">{activeProduct.warehouseName}</span>
+              <div className="flex justify-between text-xs font-semibold text-brand-textDark">
+                <span>Category:</span>
+                <span>{activeProduct.category}</span>
+              </div>
+              <div className="flex justify-between text-xs font-semibold text-brand-textDark">
+                <span>System Recorded Stock:</span>
+                <span className="font-extrabold text-brand-primary">{activeProduct.currentStock} {activeProduct.unit}</span>
               </div>
             </div>
 
-            <Input
-              label="Physical Counted Quantity *"
-              type="number"
-              value={countedQty}
-              onChange={(e) => setCountedQty(parseInt(e.target.value) || 0)}
-              min={0}
-              required
+            <Select
+              label="Location"
+              value={selectedLocation}
+              onChange={(e) => setSelectedLocation(e.target.value)}
+              options={locations.map((l) => ({ label: `${l.name} (${l.warehouseName})`, value: l.name }))}
             />
 
-            {/* Calculated Difference Badge */}
-            <div className="flex items-center justify-between p-3 rounded-xl bg-brand-creamDark/40 border border-brand-border text-xs">
-              <span className="font-semibold text-brand-textDark">Calculated Net Adjustment:</span>
+            <div>
+              <label className="block text-xs font-bold text-brand-textDark mb-1">
+                Physical Counted Stock ({activeProduct.unit})
+              </label>
+              <Input
+                type="number"
+                min={0}
+                value={countedQty}
+                onChange={(e) => setCountedQty(Number(e.target.value))}
+                required
+              />
+            </div>
+
+            <div className="p-3 rounded-xl border flex items-center justify-between text-xs font-bold bg-white border-brand-border">
+              <span>Discrepancy (Difference):</span>
               <span
-                className={`font-extrabold text-sm px-2.5 py-0.5 rounded-lg ${
+                className={
                   countedQty - activeProduct.currentStock > 0
-                    ? 'bg-emerald-100 text-emerald-800'
+                    ? 'text-emerald-700'
                     : countedQty - activeProduct.currentStock < 0
-                    ? 'bg-rose-100 text-rose-800'
-                    : 'bg-brand-cream text-brand-textMedium'
-                }`}
+                    ? 'text-rose-700'
+                    : 'text-brand-textDark'
+                }
               >
-                {countedQty - activeProduct.currentStock > 0
+                {countedQty - activeProduct.currentStock >= 0
                   ? `+${countedQty - activeProduct.currentStock}`
                   : countedQty - activeProduct.currentStock}{' '}
                 {activeProduct.unit}
@@ -336,41 +507,29 @@ export const InventoryPage: React.FC = () => {
             </div>
 
             <Select
-              label="Adjustment Reason *"
+              label="Reason for Variance"
               value={adjustReason}
               onChange={(e) => setAdjustReason(e.target.value as AdjustmentReason)}
               options={[
-                { value: 'Counting Error', label: 'Counting Error' },
-                { value: 'Damaged', label: 'Damaged Goods' },
-                { value: 'Lost', label: 'Lost / Theft' },
-                { value: 'Found', label: 'Found Inventory' },
-                { value: 'Other', label: 'Other' },
+                { label: 'Damaged (Scrapped / Broken)', value: 'Damaged' },
+                { label: 'Counting Error', value: 'Counting Error' },
+                { label: 'Found Unrecorded Stock', value: 'Found' },
+                { label: 'Lost / Shrinkage', value: 'Lost' },
+                { label: 'Other Variance', value: 'Other' },
               ]}
             />
 
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-brand-textDark">Reason Notes</label>
+            <div>
+              <label className="block text-xs font-bold text-brand-textDark mb-1">
+                Notes & Justification
+              </label>
               <textarea
+                rows={2}
                 value={adjustNotes}
                 onChange={(e) => setAdjustNotes(e.target.value)}
-                placeholder="Details of audit or damaged consignment..."
-                rows={2}
-                className="w-full rounded-xl bg-white border border-brand-border p-2.5 text-xs text-brand-textDark focus:border-brand-caramel outline-none"
+                placeholder="Add audit justification notes..."
+                className="w-full text-xs rounded-xl border border-brand-border p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-caramel"
               />
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-brand-border">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setIsAdjustModalOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" variant="primary" size="sm">
-                Apply Adjustment
-              </Button>
             </div>
           </form>
         )}

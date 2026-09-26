@@ -12,6 +12,7 @@ import {
   Truck,
   ArrowLeftRight,
   Sliders,
+  Package,
 } from 'lucide-react';
 
 export const StaffLedgerPage: React.FC = () => {
@@ -45,6 +46,7 @@ export const StaffLedgerPage: React.FC = () => {
 
   const getTransactionBadge = (type: TransactionType) => {
     const map: Record<TransactionType, { variant: BadgeVariant; icon: React.ReactNode; label: string }> = {
+      INITIAL_STOCK: { variant: 'neutral', icon: <Package className="w-3 h-3" />, label: 'Initial Stock' },
       RECEIPT: { variant: 'success', icon: <Receipt className="w-3 h-3" />, label: 'Receipt' },
       TRANSFER_IN: { variant: 'info', icon: <ArrowLeftRight className="w-3 h-3" />, label: 'Transfer In' },
       TRANSFER_OUT: { variant: 'caramel', icon: <ArrowLeftRight className="w-3 h-3" />, label: 'Transfer Out' },
