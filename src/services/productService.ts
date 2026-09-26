@@ -129,15 +129,15 @@ export const productService = {
       const { data, error } = await query;
       if (error) throw error;
 
-      let products = (data || []).map(mapDbProductToProduct);
+      let products: Product[] = (data || []).map(mapDbProductToProduct);
 
       if (filters?.category && filters.category !== 'All') {
-        products = products.filter((p) => p.category.toLowerCase() === filters.category?.toLowerCase());
+        products = products.filter((p: Product) => p.category.toLowerCase() === filters.category?.toLowerCase());
       }
 
       if (filters?.search) {
         const s = filters.search.toLowerCase();
-        products = products.filter((p) => p.name.toLowerCase().includes(s) || p.sku.toLowerCase().includes(s));
+        products = products.filter((p: Product) => p.name.toLowerCase().includes(s) || p.sku.toLowerCase().includes(s));
       }
 
       return products;

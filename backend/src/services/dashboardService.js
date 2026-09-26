@@ -13,54 +13,80 @@ class DashboardService {
     const receipts = await receiptService.getAllReceipts();
     const movements = await stockMovementService.getAllMovements();
 
-    const totalProducts = products.filter((p) => p.currentStock > 0).length;
-    const totalStockQuantity = products.reduce((acc, p) => acc + (Number(p.currentStock) || 0), 0);
+    const totalProducts = products.length;
+    const totalStock = products.reduce((acc, p) => acc + (Number(p.currentStock) || 0), 0);
     const totalValuation = products.reduce(
       (acc, p) => acc + (Number(p.currentStock) || 0) * (Number(p.sellingPrice) || Number(p.costPrice) || 0),
       0
     );
 
-    const outOfStockCount = products.filter((p) => p.currentStock === 0).length;
-    const lowStockCount = products.filter((p) => p.currentStock > 0 && p.currentStock <= p.reorderLevel).length;
-    const inStockCount = products.filter((p) => p.currentStock > p.reorderLevel).length;
+    const outOfStock = products.filter((p) => (Number(p.currentStock) || 0) === 0).length;
+    const lowStock = products.filter(
+      (p) => (Number(p.currentStock) || 0) > 0 && (Number(p.currentStock) || 0) <= (Number(p.reorderLevel) || 10)
+    ).length;
+    const inStock = products.filter(
+      (p) => (Number(p.currentStock) || 0) > (Number(p.reorderLevel) || 10)
+    ).length;
 
     const pendingReceipts = receipts.filter((r) => {
       const s = (r.status || '').toLowerCase();
       return s === 'pending' || s === 'draft' || s === 'waiting';
     }).length;
 
+    const validatedReceipts = receipts.filter((r) => {
+      const s = (r.status || '').toLowerCase();
+      return s === 'done' || s === 'completed' || s === 'validated';
+    }).length;
+
     return {
       totalProducts,
-      totalStockQuantity,
+      totalStock,
+      totalStockQuantity: totalStock,
       totalValuation,
-      inStockCount,
-      lowStockCount,
-      outOfStockCount,
+      inStock,
+      inStockCount: inStock,
+      lowStock,
+      lowStockCount: lowStock,
+      outOfStock,
+      outOfStockCount: outOfStock,
       totalReceipts: receipts.length,
       pendingReceipts,
-      pendingDeliveries: 1, // Dynamic delivery count
-      pendingInternalTransfers: 1, // Dynamic transfer count
+      validatedReceipts,
+      pendingDeliveries: 1,
+      pendingInternalTransfers: 1,
     };
   }
 
   /**
-   * GET /api/dashboard/stock-summary
-   * Returns array of products and actual current quantities for dynamic dashboard chart
+   * GET /api/dashboard/stock-status & /api/dashboard/stock-summary
    */
   async getStockSummary() {
     const products = await productService.getAllProducts();
-    return products.map((p) => ({
-      product: p.name,
-      sku: p.sku,
-      quantity: p.currentStock,
-      category: p.category,
-      unit: p.unit,
-    }));
+    const outOfStock = products.filter((p) => (Number(p.currentStock) || 0) === 0).length;
+    const lowStock = products.filter(
+      (p) => (Number(p.currentStock) || 0) > 0 && (Number(p.currentStock) || 0) <= (Number(p.reorderLevel) || 10)
+    ).length;
+    const inStock = products.filter(
+      (p) => (Number(p.currentStock) || 0) > (Number(p.reorderLevel) || 10)
+    ).length;
+
+    return {
+      inStock,
+      lowStock,
+      outOfStock,
+      total: products.length,
+      items: products.map((p) => ({
+        product: p.name,
+        sku: p.sku,
+        quantity: p.currentStock,
+        category: p.category,
+        unit: p.unit,
+      })),
+    };
   }
 
   /**
    * GET /api/dashboard/location-summary
-   * Returns location distribution
    */
   async getLocationSummary() {
     return [
@@ -75,7 +101,7 @@ class DashboardService {
    */
   async getRecentActivity(limit = 10) {
     const movements = await stockMovementService.getAllMovements();
-    return movements.slice(0, limit);
+    return movements.slice(0, Number(limit) || 10);
   }
 }
 

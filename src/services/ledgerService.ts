@@ -78,16 +78,16 @@ export const ledgerService = {
       const { data, error } = await query;
       if (error) throw error;
 
-      let entries = (data || []).map(mapDbLedgerToLedgerEntry);
+      let entries: LedgerEntry[] = (data || []).map(mapDbLedgerToLedgerEntry);
 
       if (filters?.warehouseId && filters.warehouseId !== 'All') {
-        entries = entries.filter((e) => e.warehouseId === filters.warehouseId);
+        entries = entries.filter((e: LedgerEntry) => e.warehouseId === filters.warehouseId);
       }
 
       if (filters?.search) {
         const s = filters.search.toLowerCase();
         entries = entries.filter(
-          (e) =>
+          (e: LedgerEntry) =>
             e.productName.toLowerCase().includes(s) ||
             e.sku.toLowerCase().includes(s) ||
             e.reference.toLowerCase().includes(s)

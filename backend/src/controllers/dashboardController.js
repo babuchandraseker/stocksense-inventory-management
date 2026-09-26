@@ -16,7 +16,11 @@ const getDashboardSummary = async (req, res, next) => {
 const getStockSummary = async (req, res, next) => {
   try {
     const data = await dashboardService.getStockSummary();
-    return res.status(200).json(data);
+    return res.status(200).json({
+      success: true,
+      message: 'Stock status retrieved successfully',
+      data,
+    });
   } catch (error) {
     next(error);
   }
@@ -25,7 +29,11 @@ const getStockSummary = async (req, res, next) => {
 const getLocationSummary = async (req, res, next) => {
   try {
     const data = await dashboardService.getLocationSummary();
-    return res.status(200).json(data);
+    return res.status(200).json({
+      success: true,
+      message: 'Location summary retrieved successfully',
+      data,
+    });
   } catch (error) {
     next(error);
   }
