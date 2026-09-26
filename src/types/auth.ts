@@ -3,7 +3,8 @@ export type UserRole = 'manager' | 'staff';
 export interface User {
   id: string;
   name: string;
-  email: string;
+  email?: string;
+  phone?: string;
   role: UserRole;
   avatarUrl?: string;
   warehouseId?: string;
@@ -17,8 +18,18 @@ export interface AuthState {
 }
 
 export interface LoginCredentials {
-  email: string;
+  email?: string;
   password?: string;
+  phone?: string;
+  otp?: string;
   rememberMe?: boolean;
-  role?: UserRole;
+}
+
+export interface SendOtpPayload {
+  phone: string;
+}
+
+export interface VerifyOtpPayload {
+  phone: string;
+  token: string;
 }

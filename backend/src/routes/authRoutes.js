@@ -3,6 +3,10 @@ const authMiddleware = require('../middleware/authMiddleware');
 const { requireRole } = require('../middleware/roleMiddleware');
 const { ROLES } = require('../utils/constants');
 const {
+  login,
+  sendOtp,
+  verifyOtp,
+  logout,
   getMe,
   testAuth,
   testManagerOnly,
@@ -10,6 +14,34 @@ const {
 } = require('../controllers/authController');
 
 const router = express.Router();
+
+/**
+ * @route   POST /api/auth/login
+ * @desc    Login with email and password
+ * @access  Public
+ */
+router.post('/login', login);
+
+/**
+ * @route   POST /api/auth/send-otp
+ * @desc    Send SMS OTP to phone number
+ * @access  Public
+ */
+router.post('/send-otp', sendOtp);
+
+/**
+ * @route   POST /api/auth/verify-otp
+ * @desc    Verify SMS OTP code
+ * @access  Public
+ */
+router.post('/verify-otp', verifyOtp);
+
+/**
+ * @route   POST /api/auth/logout
+ * @desc    Logout user session
+ * @access  Private
+ */
+router.post('/logout', authMiddleware, logout);
 
 /**
  * @route   GET /api/auth/me

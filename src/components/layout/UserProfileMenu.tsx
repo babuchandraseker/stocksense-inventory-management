@@ -1,11 +1,11 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Dropdown, DropdownItem } from '../common/Dropdown';
-import { User, LogOut, RefreshCw, ShieldCheck, UserCheck } from 'lucide-react';
+import { User, LogOut, ShieldCheck, UserCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const UserProfileMenu: React.FC = () => {
-  const { user, role, logout, switchRole } = useAuth();
+  const { user, role, logout } = useAuth();
   const navigate = useNavigate();
 
   if (!user) return null;
@@ -17,16 +17,6 @@ export const UserProfileMenu: React.FC = () => {
       icon: <User className="w-4 h-4 text-brand-textMuted" />,
       onClick: () => {
         navigate(role === 'manager' ? '/manager/profile' : '/staff/profile');
-      },
-    },
-    {
-      id: 'switch_role',
-      label: role === 'manager' ? 'Switch to Staff UI' : 'Switch to Manager UI',
-      icon: <RefreshCw className="w-4 h-4 text-brand-caramel" />,
-      onClick: () => {
-        const nextRole = role === 'manager' ? 'staff' : 'manager';
-        switchRole(nextRole);
-        navigate(nextRole === 'manager' ? '/manager/dashboard' : '/staff/dashboard');
       },
     },
     'divider',

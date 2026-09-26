@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole, LoginCredentials } from '../types/auth';
-
 import { authApi } from '../services/api';
 
 interface AuthContextType {
@@ -9,32 +8,10 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (credentials: LoginCredentials) => Promise<boolean>;
-  loginAsManager: () => Promise<void>;
-  loginAsStaff: () => Promise<void>;
+  sendSmsOtp: (phone: string) => Promise<{ success: boolean; message: string; isDevMode?: boolean; devCode?: string }>;
+  verifySmsOtp: (phone: string, token: string) => Promise<boolean>;
   logout: () => void;
-  switchRole: (role: UserRole) => void;
 }
-
-export const MOCK_USERS: Record<UserRole, User> = {
-  manager: {
-    id: 'usr_mgr_01',
-    name: 'Admin',
-    email: 'admin@stocksense.com',
-    role: 'manager',
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-    warehouseId: 'wh_main_01',
-    warehouseName: 'Central Logistics Hub',
-  },
-  staff: {
-    id: 'usr_stf_01',
-    name: 'Karthik',
-    email: 'staff@stocksense.com',
-    role: 'staff',
-    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-    warehouseId: 'wh_main_01',
-    warehouseName: 'Central Logistics Hub',
-  },
-};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -63,34 +40,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     try {
       const res = await authApi.login(credentials);
-      setUser(res.user);
+      if (res && res.user) {
+        setUser(res.user);
+        setIsLoading(false);
+        return true;
+      }
       setIsLoading(false);
-      return true;
+      return false;
     } catch {
-      // Fallback
-      let fallbackUser: User = credentials.role === 'staff' ? MOCK_USERS.staff : MOCK_USERS.manager;
-      setUser(fallbackUser);
       setIsLoading(false);
-      return true;
+      return false;
     }
   };
 
-  const loginAsManager = async () => {
-    await login({ email: 'admin@stocksense.com', role: 'manager' });
+  const sendSmsOtp = async (phone: string) => {
+    return await authApi.sendOtp(phone);
   };
 
-  const loginAsStaff = async () => {
-    await login({ email: 'staff@stocksense.com', role: 'staff' });
-  };
-
-  const switchRole = (newRole: UserRole) => {
-    setUser(MOCK_USERS[newRole]);
+  const verifySmsOtp = async (phone: string, token: string): Promise<boolean> => {
+    setIsLoading(true);
+    try {
+      const res = await authApi.verifyOtp(phone, token);
+      if (res && res.user) {
+        setUser(res.user);
+        setIsLoading(false);
+        return true;
+      }
+      setIsLoading(false);
+      return false;
+    } catch {
+      setIsLoading(false);
+      return false;
+    }
   };
 
   const logout = () => {
     authApi.logout().catch(() => {});
     setUser(null);
     localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem('stocksense_token');
   };
 
   return (
@@ -101,10 +89,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated: !!user,
         isLoading,
         login,
-        loginAsManager,
-        loginAsStaff,
+        sendSmsOtp,
+        verifySmsOtp,
         logout,
-        switchRole,
       }}
     >
       {children}
